@@ -56,7 +56,7 @@ if __name__ == "__main__":
     torch.set_default_tensor_type(torch.cuda.FloatTensor)
     torch.set_num_threads(10)
     torch.set_num_interop_threads(10)
-    config_path = "config\ini_30.json"
+    config_path = "config/ini_30.json"
     setup_ddp()
     if config_path is not None:
         with open(config_path, 'r') as f:

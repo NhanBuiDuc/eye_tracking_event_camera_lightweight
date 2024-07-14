@@ -12,16 +12,27 @@ def setup_ddp():
     # Set necessary environment variables
     os.environ["MASTER_ADDR"] = "localhost"  # Replace with your master node address
     os.environ["MASTER_PORT"] = "12345"     # Replace with your master node port
-    os.environ["RANK"] = "0"                # Replace with the rank of this process
-    os.environ["WORLD_SIZE"] = "1"   
-    # Initialize the process group
-    init_process_group(backend="nccl", init_method="env://")
-    
-    # Set CUDA device for this process (useful when each process uses a single GPU)
-    os.environ["LOCAL_RANK"] = str(torch.distributed.get_rank())
-    torch.cuda.set_device(int(os.environ["LOCAL_RANK"]))
+
+    # Check if NNCL is available
+    use_nccl = torch.cuda.nccl.is_available()
+
+    if use_nccl:
+        os.environ["RANK"] = "0"            # Replace with the rank of this process
+        os.environ["WORLD_SIZE"] = "1"      # Replace with the total number of processes
+
+        # Initialize the process group
+        init_process_group(backend="nccl", init_method="env://")
+        
+        # Set CUDA device for this process (useful when each process uses a single GPU)
+        os.environ["LOCAL_RANK"] = str(torch.distributed.get_rank())
+        torch.cuda.set_device(int(os.environ["LOCAL_RANK"]))
+    else:
+        # Fallback to single GPU training
+        torch.cuda.set_device(0)  # Use GPU 0
+        os.environ["LOCAL_RANK"] = "0"  # Set local rank to 0 for single GPU
 
 def prepare_dataloader(dataset, batch_size):
+    
     # Function to prepare DataLoader with DistributedSampler
     return DataLoader(
         dataset,

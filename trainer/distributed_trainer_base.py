@@ -69,13 +69,13 @@ class DistributedTrainerBase(ABC):
     def _run_epoch(self, epoch):
         raise NotImplementedError("Subclasses should implement _run_epoch method")
       
-    @abstractmethod
-    def train_one_epoch(self):
-        """
-        Trains the model for one epoch using multiple GPUs.
-        This method should be implemented by subclasses.
-        """
-        pass
+    # @abstractmethod
+    # def train_one_epoch(self):
+    #     """
+    #     Trains the model for one epoch using multiple GPUs.
+    #     This method should be implemented by subclasses.
+    #     """
+    #     pass
 
     # @abstractmethod
     # def evaluate(self):

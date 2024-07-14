@@ -7,16 +7,15 @@ from torch.utils.data.distributed import DistributedSampler
 from trainer.distributed_trainer import DistributedGPUTrainer
 from torch.distributed import init_process_group, destroy_process_group
 import os
-
+from loss.YoloLoss import YoloLoss
 def setup_ddp():
     # Set necessary environment variables
     os.environ["MASTER_ADDR"] = "localhost"  # Replace with your master node address
     os.environ["MASTER_PORT"] = "12345"     # Replace with your master node port
 
     # Check if NNCL is available
-    use_nccl = torch.cuda.nccl.is_available()
-
-    if use_nccl:
+    # use_nccl = torch.cuda.nccl.is_available()
+    try:
         os.environ["RANK"] = "0"            # Replace with the rank of this process
         os.environ["WORLD_SIZE"] = "1"      # Replace with the total number of processes
 
@@ -26,22 +25,29 @@ def setup_ddp():
         # Set CUDA device for this process (useful when each process uses a single GPU)
         os.environ["LOCAL_RANK"] = str(torch.distributed.get_rank())
         torch.cuda.set_device(int(os.environ["LOCAL_RANK"]))
-    else:
+    except:
         # Fallback to single GPU training
         torch.cuda.set_device(0)  # Use GPU 0
         os.environ["LOCAL_RANK"] = "0"  # Set local rank to 0 for single GPU
 
 def prepare_dataloader(dataset, batch_size):
-    
-    # Function to prepare DataLoader with DistributedSampler
-    return DataLoader(
-        dataset,
-        batch_size=batch_size,
-        pin_memory=True,
-        shuffle=False,
-        sampler=DistributedSampler(dataset, shuffle=False)
-    )
-
+    try:
+        # Function to prepare DataLoader with DistributedSampler
+        return DataLoader(
+            dataset,
+            batch_size=batch_size,
+            pin_memory=True,
+            shuffle=False,
+            sampler=DistributedSampler(dataset, shuffle=False)
+        )
+    except:
+        # Function to prepare DataLoader with DistributedSampler
+        return DataLoader(
+            dataset,
+            batch_size=batch_size,
+            pin_memory=True,
+            shuffle=False,
+        )
 if __name__ == "__main__":
     # Example function to load your dataset, model, and optimizer
     assert torch.cuda.is_available()
@@ -93,7 +99,7 @@ if __name__ == "__main__":
         )
     else:
         raise NotImplementedError
-
+    criterion = YoloLoss(dataset_params, training_params)
     train_dataset = Ini30Dataset(split="train", config_params=config_params)  # Example dataset
     val_dataset = Ini30Dataset(split="val", config_params=config_params)  # Example dataset
     # test_dataset = Ini30Dataset(split="test", config_json_path=config_params)  # Example dataset
@@ -106,6 +112,6 @@ if __name__ == "__main__":
     dataloader_list.append(val_dataloader)
     dataloader_list.append(None)
     # train_dataloader = prepare_dataloader(train_dataset, batch_size)
-    trainer = DistributedGPUTrainer(model, dataloader_list, optimizer, scheduler, save_every, snapshot_path)
+    trainer = DistributedGPUTrainer(model, dataloader_list, optimizer, criterion, scheduler, save_every, snapshot_path)
     trainer.train(num_epochs)
     destroy_process_group()

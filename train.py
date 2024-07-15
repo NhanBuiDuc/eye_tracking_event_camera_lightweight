@@ -2,33 +2,40 @@ from data.dataset.ini_30_dataset import Ini30Dataset
 import torch
 import json
 from model.B_3ET import Baseline_3ET
+from model.ANN_retina import Retina
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 from trainer.distributed_trainer import DistributedGPUTrainer
 from torch.distributed import init_process_group, destroy_process_group
 import os
 from loss.YoloLoss import YoloLoss
-def setup_ddp():
+from utils.ini_30.util import get_model_for_baseline
+import torch.distributed as dist
+import torch.multiprocessing as mp
+
+def setup_ddp(rank, world_size):
     # Set necessary environment variables
     os.environ["MASTER_ADDR"] = "localhost"  # Replace with your master node address
-    os.environ["MASTER_PORT"] = "12345"     # Replace with your master node port
+    os.environ["MASTER_PORT"] = "12355"     # Replace with your master node port
 
-    # Check if NNCL is available
-    # use_nccl = torch.cuda.nccl.is_available()
-    try:
-        os.environ["RANK"] = "0"            # Replace with the rank of this process
-        os.environ["WORLD_SIZE"] = "1"      # Replace with the total number of processes
+    # try:
+    # Set world size based on the number of GPUs
+    # os.environ["WORLD_SIZE"] = world_size
 
-        # Initialize the process group
-        init_process_group(backend="nccl", init_method="env://")
-        
-        # Set CUDA device for this process (useful when each process uses a single GPU)
-        os.environ["LOCAL_RANK"] = str(torch.distributed.get_rank())
-        torch.cuda.set_device(int(os.environ["LOCAL_RANK"]))
-    except:
-        # Fallback to single GPU training
-        torch.cuda.set_device(0)  # Use GPU 0
-        os.environ["LOCAL_RANK"] = "0"  # Set local rank to 0 for single GPU
+    # os.environ["LOCAL_RANK"] = str(rank)
+    # Initialize the process group
+    torch.cuda.set_device(rank)
+    init_process_group(
+        backend="nccl",
+        # init_method="env://",
+        world_size=world_size,
+        rank=rank  # This process's rank, starting from 0
+    )
+    # except Exception as e:
+    #     print(f"Failed to initialize DDP: {e}")
+    #     # Fallback to single GPU training
+    #     torch.cuda.set_device(gpu_indices[0])  # Use the first GPU in the list
+    #     os.environ["LOCAL_RANK"] = "0"  # Set local rank to 0 for single GPU
 
 def prepare_dataloader(dataset, batch_size):
     try:
@@ -48,35 +55,33 @@ def prepare_dataloader(dataset, batch_size):
             pin_memory=True,
             shuffle=False,
         )
-if __name__ == "__main__":
-    # Example function to load your dataset, model, and optimizer
-    assert torch.cuda.is_available()
-    torch.autograd.set_detect_anomaly(True)
-    torch.multiprocessing.set_start_method("spawn", force=True)
-    torch.set_default_tensor_type(torch.cuda.FloatTensor)
-    torch.set_num_threads(10)
-    torch.set_num_interop_threads(10)
+def distributed_job(rank, world_size):
+    setup_ddp(rank, world_size)
     config_path = "config/ini_30.json"
-    setup_ddp()
+    device_id = rank % torch.cuda.device_count()
     if config_path is not None:
         with open(config_path, 'r') as f:
             config_params = json.load(f)
     dataset_params = config_params["dataset_params"]
     training_params = config_params["training_params"]
-    arch_name = "3ET"
+    arch_name = "Retina"
     optimizer =  training_params["optimizer"]
     lr_model = training_params["lr_model"]
     batch_size = training_params["batch_size"]
     num_epochs = training_params["num_epochs"]
     save_every = 1
     snapshot_path = "checkpoints"
-
+    short_train = True
     if arch_name == "3ET":
         model = Baseline_3ET(
             height=dataset_params["img_height"],
             width=dataset_params["img_width"],
             input_dim=dataset_params["input_channel"]
         )
+
+    elif arch_name == "Retina":
+        config = get_model_for_baseline(dataset_params, training_params)
+        model = Retina(dataset_params, training_params, config)
     # Initialize Optimizer
     if training_params["optimizer"] == "Adam":
         optimizer = torch.optim.Adam(
@@ -102,6 +107,9 @@ if __name__ == "__main__":
     criterion = YoloLoss(dataset_params, training_params)
     train_dataset = Ini30Dataset(split="train", config_params=config_params)  # Example dataset
     val_dataset = Ini30Dataset(split="val", config_params=config_params)  # Example dataset
+    if short_train:
+        train_dataset = torch.utils.data.Subset(train_dataset, range(2))
+        val_dataset = torch.utils.data.Subset(val_dataset, range(2))
     # test_dataset = Ini30Dataset(split="test", config_json_path=config_params)  # Example dataset
     dataloader_list = []
     optimizer = torch.optim.SGD(model.parameters(), lr=1e-3)
@@ -112,6 +120,26 @@ if __name__ == "__main__":
     dataloader_list.append(val_dataloader)
     dataloader_list.append(None)
     # train_dataloader = prepare_dataloader(train_dataset, batch_size)
-    trainer = DistributedGPUTrainer(model, dataloader_list, optimizer, criterion, scheduler, save_every, snapshot_path)
+    trainer = DistributedGPUTrainer(model, rank, dataloader_list, optimizer, criterion, scheduler, save_every, snapshot_path)
     trainer.train(num_epochs)
     destroy_process_group()
+    
+if __name__ == "__main__":
+    # Example function to load your dataset, model, and optimizer
+    assert torch.cuda.is_available()
+    torch.autograd.set_detect_anomaly(True)
+    torch.multiprocessing.set_start_method("spawn", force=True)
+    torch.set_default_dtype(torch.float32)
+    torch.set_default_device("cuda")
+    torch.set_num_threads(10)
+    torch.set_num_interop_threads(10)
+    # dist.init_process_group("nccl")
+    # rank = dist.get_rank()
+    n_gpus = torch.cuda.device_count()
+    # print(f"Start running basic DDP example on rank {rank}.")
+    print(f"Number of GPUS: {n_gpus}.")
+    world_size = torch.cuda.device_count()
+    # setup_ddp(gpu_indices = [0, 1, 2], rank = rank, world_size)
+    # create model and move it to GPU with id rank
+
+    mp.spawn(distributed_job, args=(world_size,), nprocs=world_size)

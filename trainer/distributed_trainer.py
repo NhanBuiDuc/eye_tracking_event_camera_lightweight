@@ -5,11 +5,12 @@ import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader
 from trainer.distributed_trainer_base import DistributedTrainerBase
-import torch.functional as F
-
+import torch.nn.functional as F
+from tqdm import tqdm
 class DistributedGPUTrainer(DistributedTrainerBase):
     def __init__(self, 
                 model,
+                gpu_id,
                 dataloader_list,
                 optimizer, 
                 criterion,
@@ -17,7 +18,7 @@ class DistributedGPUTrainer(DistributedTrainerBase):
                 save_every, 
                 snapshot_path
                 ):
-        super().__init__(model, dataloader_list, optimizer, criterion, scheduler, save_every, snapshot_path)
+        super().__init__(model, gpu_id, dataloader_list, optimizer, criterion, scheduler, save_every, snapshot_path)
 
     def _run_epoch(self, epoch):
         self.model.train()
@@ -25,7 +26,7 @@ class DistributedGPUTrainer(DistributedTrainerBase):
         print(f"[GPU{self.gpu_id}] Epoch {epoch} | Batchsize: {b_sz} | Steps: {len(self.train_data_loader)}")
         self.train_data_loader.sampler.set_epoch(epoch)
 
-        for source, targets in self.train_data_loader:
+        for source, targets, avg_dt in tqdm(self.train_data_loader):
             source = source.to(self.gpu_id)
             targets = targets.to(self.gpu_id)
             self.optimizer.zero_grad()
@@ -41,7 +42,7 @@ class DistributedGPUTrainer(DistributedTrainerBase):
         total = 0
         with torch.no_grad():
             val_loss = 0
-            for source, targets in self.val_data_loader:
+            for source, targets, avg_dt in tqdm(self.val_data_loader):
                 source = source.to(self.gpu_id)
                 targets = targets.to(self.gpu_id)
                 output = self.model(source)

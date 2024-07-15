@@ -11,7 +11,8 @@ class DistributedTrainerBase(ABC):
     """
 
     def __init__(self, 
-                model, 
+                model,
+                gpu_id,
                 dataloader_list,
                 optimizer,
                 scheduler,
@@ -28,7 +29,9 @@ class DistributedTrainerBase(ABC):
             criterion (torch.nn.Module): The loss function.
             device_ids (list): List of GPU device IDs to use for training.
         """
-        self.model = model
+        self.gpu_id = gpu_id  # Will be set during DDP setup
+        self.model = model.to(self.gpu_id)  # Move model to GPU
+        self.model = DDP(model, device_ids=[self.gpu_id]).to("cuda")
         self.train_data_loader = dataloader_list[0]
         self.val_data_loader = dataloader_list[1]
         self.test_data_loader = dataloader_list[2]
@@ -39,10 +42,7 @@ class DistributedTrainerBase(ABC):
         self.save_every = save_every
         self.snapshot_path = snapshot_path
         self.epochs_run = 0
-        self.gpu_id = None  # Will be set during DDP setup
-
-        self.model = self.model.to(self.gpu_id)
-        self.model = DDP(self.model, device_ids=[self.gpu_id])
+        # self.model = self.model.to(self.gpu_id)
 
     def _load_snapshot(self, snapshot_path):
         loc = f"cuda:{self.gpu_id}"
@@ -60,7 +60,7 @@ class DistributedTrainerBase(ABC):
         print(f"Epoch {epoch} | Training snapshot saved at {self.snapshot_path}")
 
     def train(self, max_epochs):
-        for epoch in range(self.epochs_run, max_epochs):
+        for epoch in tqdm(range(self.epochs_run, max_epochs)):
             self._run_epoch(epoch)
             if self.gpu_id == 0 and epoch % self.save_every == 0:
                 self._save_snapshot(epoch)

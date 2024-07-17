@@ -161,7 +161,7 @@ class YoloLoss(nn.Module):
             pred_point, target_point
         ).mean()
 
-        loss = {
+        self.loss = {
             "box_loss": self.box_loss * self.w_box_loss,
             "conf_loss": self.conf_loss * self.w_conf_loss,
             "distance_loss": self.point_loss * self.w_euclidian_loss,
@@ -173,4 +173,4 @@ class YoloLoss(nn.Module):
         self.memory["points"]["pred"] = pred_point
         self.memory["distance"] = self.point_loss
 
-        return loss
+        return sum(self.loss.values())

@@ -53,12 +53,12 @@ def get_transforms(dataset_params, training_params, augmentations: bool = False)
     return input_transforms, target_transforms
 
 def get_indexes(val_idx): 
-    train_val_idxs = list(range(0, 30))
+    train_val_idx = list(range(0, 30))
     #random.shuffle(train_val_idxs)
-    train_val_idxs.remove(val_idx)
-    train_idxs = train_val_idxs
-    val_idxs = [val_idx]   
-    return train_idxs, val_idxs
+    for idx in val_idx:
+        if idx in train_val_idx:
+            train_val_idx.remove(idx)
+    return train_val_idx, val_idx
 def compute_output_dim(training_params):
     # select loss
     if training_params["yolo_loss"]:

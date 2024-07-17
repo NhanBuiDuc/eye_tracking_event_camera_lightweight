@@ -8,15 +8,22 @@ from torch.utils.data.distributed import DistributedSampler
 from trainer.distributed_trainer import DistributedGPUTrainer
 from torch.distributed import init_process_group, destroy_process_group
 import os
-from loss.YoloLoss import YoloLoss
+from pathlib import Path
 from utils.ini_30.util import get_model_for_baseline
 import torch.distributed as dist
 import torch.multiprocessing as mp
+from metrics.metric_base import Metric, MetricSequence
+from metrics.mean_squared_error import MeanSquaredError
+
+from loss.loss_base import Loss, LossSequence
+from loss.YoloLoss import YoloLoss
+
+
 
 def setup_ddp(rank, world_size):
     # Set necessary environment variables
     os.environ["MASTER_ADDR"] = "localhost"  # Replace with your master node address
-    os.environ["MASTER_PORT"] = "12355"     # Replace with your master node port
+    os.environ["MASTER_PORT"] = "12365"     # Replace with your master node port
 
     # try:
     # Set world size based on the number of GPUs
@@ -55,6 +62,23 @@ def prepare_dataloader(dataset, batch_size):
             pin_memory=True,
             shuffle=False,
         )
+
+def create_metrics_sequence(metrics: list):
+    results = []
+    for metric in metrics:
+        if metric == "mean_squared_error":
+            results.append(MeanSquaredError())
+    metrics_sequence = MetricSequence(results)
+    return metrics_sequence
+
+def create_losses_sequence(losses: list, dataset_params: dict, training_params: dict ):
+    results = []
+    for loss in losses:
+        if loss == "yolo_loss":
+            results.append(YoloLoss(dataset_params, training_params))
+    losses_sequence = LossSequence(results)
+    return losses_sequence
+
 def distributed_job(rank, world_size):
     setup_ddp(rank, world_size)
     config_path = "config/ini_30.json"
@@ -64,14 +88,20 @@ def distributed_job(rank, world_size):
             config_params = json.load(f)
     dataset_params = config_params["dataset_params"]
     training_params = config_params["training_params"]
-    arch_name = "Retina"
+    arch_name = "3ET"
     optimizer =  training_params["optimizer"]
     lr_model = training_params["lr_model"]
     batch_size = training_params["batch_size"]
     num_epochs = training_params["num_epochs"]
+    metrics = training_params["metrics"]
+    losses = training_params["losses"]
     save_every = 1
     snapshot_path = "checkpoints"
-    short_train = True
+    # Create a Path object
+    path = Path(snapshot_path)
+    path.mkdir(parents=True, exist_ok=True)
+    short_train = False
+    
     if arch_name == "3ET":
         model = Baseline_3ET(
             height=dataset_params["img_height"],
@@ -104,12 +134,14 @@ def distributed_job(rank, world_size):
         )
     else:
         raise NotImplementedError
-    criterion = YoloLoss(dataset_params, training_params)
+
+    criterions_sequence = create_losses_sequence(losses, dataset_params, training_params)
+    metrics_sequence = create_metrics_sequence(metrics)
     train_dataset = Ini30Dataset(split="train", config_params=config_params)  # Example dataset
     val_dataset = Ini30Dataset(split="val", config_params=config_params)  # Example dataset
     if short_train:
-        train_dataset = torch.utils.data.Subset(train_dataset, range(2))
-        val_dataset = torch.utils.data.Subset(val_dataset, range(2))
+        train_dataset = torch.utils.data.Subset(train_dataset, range(100))
+        val_dataset = torch.utils.data.Subset(val_dataset, range(100))
     # test_dataset = Ini30Dataset(split="test", config_json_path=config_params)  # Example dataset
     dataloader_list = []
     optimizer = torch.optim.SGD(model.parameters(), lr=1e-3)
@@ -120,10 +152,11 @@ def distributed_job(rank, world_size):
     dataloader_list.append(val_dataloader)
     dataloader_list.append(None)
     # train_dataloader = prepare_dataloader(train_dataset, batch_size)
-    trainer = DistributedGPUTrainer(model, rank, dataloader_list, optimizer, criterion, scheduler, save_every, snapshot_path)
+    trainer = DistributedGPUTrainer(model, rank, dataloader_list, optimizer, scheduler, criterions_sequence, metrics_sequence, save_every, snapshot_path)
     trainer.train(num_epochs)
+    trainer.evaluate()
     destroy_process_group()
-    
+
 if __name__ == "__main__":
     # Example function to load your dataset, model, and optimizer
     assert torch.cuda.is_available()
@@ -135,10 +168,14 @@ if __name__ == "__main__":
     torch.set_num_interop_threads(10)
     # dist.init_process_group("nccl")
     # rank = dist.get_rank()
+    gpus_list = [2, 3, 4]
     n_gpus = torch.cuda.device_count()
     # print(f"Start running basic DDP example on rank {rank}.")
-    print(f"Number of GPUS: {n_gpus}.")
-    world_size = torch.cuda.device_count()
+    os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(map(str, gpus_list)) # Use GPUs 0 and 1
+    print(f"Number of avaible GPUS: {n_gpus}.")
+    print(f"Use GPUS: {len(gpus_list)}.")
+    # world_size = torch.cuda.device_count()
+    world_size = len(gpus_list)
     # setup_ddp(gpu_indices = [0, 1, 2], rank = rank, world_size)
     # create model and move it to GPU with id rank
 

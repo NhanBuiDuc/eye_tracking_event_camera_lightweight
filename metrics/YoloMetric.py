@@ -72,3 +72,40 @@ class YoloMetric(Metric):
             results[threshold] = rate
         return results
 
+    def angular_error(self, inputs, targets):
+        """
+        Calculate the angular error between predicted and ground truth gaze vectors.
+        
+        Args:
+            inputs (torch.Tensor): Predicted gaze vectors of shape (batch, 2).
+            targets (torch.Tensor): Ground truth gaze vectors of shape (batch, 2).
+        
+        Returns:
+            torch.Tensor: Angular errors for each element in the batch of shape (batch,).
+        """
+        # Normalize the vectors
+        inputs[:, 0] = inputs[:, 0] * self.image_size[0]
+        inputs[:, 1] = inputs[:, 1] * self.image_size[1]
+        
+        inputs[:, 0] = inputs[:, 0] * (512 // self.image_size[0])
+        inputs[:, 1] = inputs[:, 1] * (512 // self.image_size[1])      
+
+        targets[:, 0] = targets[:, 0] * self.image_size[0]
+        targets[:, 1] = targets[:, 1] * self.image_size[1]
+        
+        targets[:, 0] = targets[:, 0] * (512 // self.image_size[0])
+        targets[:, 1] = targets[:, 1] * (512 // self.image_size[1])      
+        
+        # Calculate the dot product between the normalized vectors
+        dot_product = (inputs * targets).sum(dim=1)
+        
+        # Clamp the dot product to avoid numerical errors
+        dot_product = torch.clamp(dot_product, -1.0, 1.0)
+        
+        # Calculate the angular error in radians
+        angular_error_radians = torch.acos(dot_product)
+        
+        # Convert the angular error from radians to degrees
+        angular_error_degrees = torch.rad2deg(angular_error_radians)
+        
+        return angular_error_degrees

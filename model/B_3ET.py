@@ -185,6 +185,7 @@ class ConvLSTM(nn.Module):
 
         return layer_output_list, last_state_list
 
+    # init hidden states for sub cell layers
     def _init_hidden(self, batch_size, image_size):
         init_states = []
         for i in range(self.num_layers):

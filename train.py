@@ -17,7 +17,7 @@ from metrics.mean_squared_error import MeanSquaredError
 
 from loss.loss_base import Loss, LossSequence
 from loss.YoloLoss import YoloLoss
-
+from model.simple_convlstm import SimpleConvLSTM
 
 
 def setup_ddp(rank, world_size):
@@ -88,7 +88,7 @@ def distributed_job(rank, world_size):
             config_params = json.load(f)
     dataset_params = config_params["dataset_params"]
     training_params = config_params["training_params"]
-    arch_name = "3ET"
+    arch_name = "lstm"
     optimizer =  training_params["optimizer"]
     lr_model = training_params["lr_model"]
     batch_size = training_params["batch_size"]
@@ -112,6 +112,12 @@ def distributed_job(rank, world_size):
     elif arch_name == "Retina":
         config = get_model_for_baseline(dataset_params, training_params)
         model = Retina(dataset_params, training_params, config)
+    elif arch_name == "lstm": 
+        model = SimpleConvLSTM(
+            height=dataset_params["img_height"],
+            width=dataset_params["img_width"],
+            input_dim=dataset_params["input_channel"]
+        )
     # Initialize Optimizer
     if training_params["optimizer"] == "Adam":
         optimizer = torch.optim.Adam(
@@ -168,7 +174,7 @@ if __name__ == "__main__":
     torch.set_num_interop_threads(10)
     # dist.init_process_group("nccl")
     # rank = dist.get_rank()
-    gpus_list = [2, 3, 4]
+    gpus_list = [0]
     n_gpus = torch.cuda.device_count()
     # print(f"Start running basic DDP example on rank {rank}.")
     os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(map(str, gpus_list)) # Use GPUs 0 and 1

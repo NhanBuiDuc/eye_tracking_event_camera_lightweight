@@ -1,0 +1,33 @@
+{
+    "dataset_params": { 
+        "dataset_name": "eye_data",
+        "get_item_strategy": "static_window",
+        "data_dir": "data/dataset/eye_data",
+        "num_bins": 64,
+        "input_channel": 2,
+        "img_width": 346,
+        "img_height": 260, 
+        "filter_time": 500000,
+        "fixed_window_dt": 2500, 
+        "tonic_transforms": []
+    },
+    "training_params": {
+        "device": "cuda",
+        "metrics": ["mean_squared_error"],
+        "losses": ["yolo_loss", "euclidian_loss"],
+        "lr_model": 1e-4,
+        "num_epochs": 200,
+        "batch_size": 32,
+        "optimizer": "Adam",
+        "scheduler": "StepLR",
+        "out_dir": "output",
+        "euclidian_loss": false,
+        "focal_loss": false,
+        "yolo_loss": true,
+        "SxS_Grid": 4,
+        "num_classes": 0,
+        "num_boxes": 2,
+        "bbox_w": 5
+    }
+  }
+  

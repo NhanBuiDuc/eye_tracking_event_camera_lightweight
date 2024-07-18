@@ -31,18 +31,20 @@ def setup_ddp(rank, world_size):
 
     # os.environ["LOCAL_RANK"] = str(rank)
     # Initialize the process group
-    torch.cuda.set_device(rank)
-    init_process_group(
-        backend="nccl",
-        # init_method="env://",
-        world_size=world_size,
-        rank=rank  # This process's rank, starting from 0
-    )
-    # except Exception as e:
-    #     print(f"Failed to initialize DDP: {e}")
-    #     # Fallback to single GPU training
-    #     torch.cuda.set_device(gpu_indices[0])  # Use the first GPU in the list
-    #     os.environ["LOCAL_RANK"] = "0"  # Set local rank to 0 for single GPU
+    try:
+        torch.cuda.set_device(rank)
+        init_process_group(
+            backend="nccl",
+            # init_method="env://",
+            world_size=world_size,
+            rank=rank  # This process's rank, starting from 0
+        )
+    except Exception as e:
+        print(e)
+        print(f"Failed to initialize DDP: {e}")
+        # Fallback to single GPU training
+        torch.cuda.set_device(0)  # Use the first GPU in the list
+        os.environ["LOCAL_RANK"] = "0"  # Set local rank to 0 for single GPU
 
 def prepare_dataloader(dataset, batch_size):
     try:
@@ -88,7 +90,7 @@ def distributed_job(rank, world_size):
             config_params = json.load(f)
     dataset_params = config_params["dataset_params"]
     training_params = config_params["training_params"]
-    arch_name = "lstm"
+    arch_name = "LSTM"
     optimizer =  training_params["optimizer"]
     lr_model = training_params["lr_model"]
     batch_size = training_params["batch_size"]
@@ -112,7 +114,7 @@ def distributed_job(rank, world_size):
     elif arch_name == "Retina":
         config = get_model_for_baseline(dataset_params, training_params)
         model = Retina(dataset_params, training_params, config)
-    elif arch_name == "lstm": 
+    elif arch_name == "LSTM": 
         model = SimpleConvLSTM(
             height=dataset_params["img_height"],
             width=dataset_params["img_width"],

@@ -6,6 +6,7 @@ import torch
 from torch.nn.parallel import DistributedDataParallel as DDP
 import csv
 import numpy as np
+from pathlib import Path
 
 class DistributedTrainerBase(ABC):
     """
@@ -48,26 +49,6 @@ class DistributedTrainerBase(ABC):
         self.epochs_run = 0
         # self.model = self.model.to(self.gpu_id)
 
-    def _load_snapshot(self, epoch):
-        loc = f"cuda:{self.gpu_id}"
-        class_name = str(type(self.model.module)).split('.')[-1][:-2]  # Extract class name 'Retina'
-        file_name = f"{self.snapshot_path}/{class_name}_epoch_{epoch}.pt"
-        snapshot = torch.load(snapshot_path, map_location=loc)
-        self.model.load_state_dict(snapshot["MODEL_STATE"])
-        self.epochs_run = snapshot["EPOCHS_RUN"]
-        print(f"Resuming training from snapshot at Epoch {self.epochs_run}")
-
-    def _save_snapshot(self, epoch):
-        snapshot = {
-            "MODEL_STATE": self.model.module.state_dict(),
-            "EPOCHS_RUN": epoch,
-        }
-        class_name = str(type(self.model.module)).split('.')[-1][:-2]  # Extract class name 'Retina'
-        file_name = f"{self.snapshot_path}/{class_name}_epoch_{epoch}.pt"
-
-        torch.save(snapshot, file_name)
-        print(f"Epoch {epoch} | Training snapshot saved at {file_name}")
-
     def train(self, max_epochs):
         for epoch in range(self.epochs_run, max_epochs):
             self._run_epoch(epoch)
@@ -103,42 +84,100 @@ class DistributedTrainerBase(ABC):
                 value = value.cpu().detach().numpy()
             np.save(filename, value)
             
-    @abstractmethod
     def _run_epoch(self, epoch):
-        raise NotImplementedError("Subclasses should implement _run_epoch method")
-      
-    # @abstractmethod
-    # def train_one_epoch(self):
-    #     """
-    #     Trains the model for one epoch using multiple GPUs.
-    #     This method should be implemented by subclasses.
-    #     """
-    #     pass
+        self.model.train()
+        b_sz = len(next(iter(self.train_data_loader))[0])
+        if self.gpu_id == 0:
+            print(f"[GPU{self.gpu_id}] Epoch {epoch} | Batchsize: {b_sz} | Steps: {len(self.train_data_loader)}")
+        self.train_data_loader.sampler.set_epoch(epoch)
+        outputs = []
+        targets = []
+        # gpus = []
+        for source, target, avg_dt in (self.train_data_loader):
+            b, t, c, w, h = target.shape
+            source = source.to(self.gpu_id)
+            target = target.to(self.gpu_id)
+            self.optimizer.zero_grad()
+            output = self.model(source)
+            output = self.reshape(output, [b, t, c, w, h])
+            outputs.append(output.cpu().detach().numpy())
+            targets.append(target.cpu().detach().numpy())
+            # gpus.append(self.gpu_id)
 
-    # @abstractmethod
-    # def evaluate(self):
-    #     """
-    #     Evaluates the model on the validation set using multiple GPUs.
-    #     This method should be implemented by subclasses.
-    #     """
-    #     pass
+            total_loss, loss_dict = self.criterions(output, target)
 
-    # @abstractmethod
-    # def save_model(self, path):
-    #     """
-    #     Saves the model to the specified path.
-        
-    #     Parameters:
-    #         path (str): The path where the model will be saved.
-    #     """
-    #     pass
+            # if self.gpu_id == 0:
+            for loss in loss_dict:
+                print(f"{(loss)} Train Loss: ", loss_dict[loss])
 
-    # @abstractmethod
-    # def load_model(self, path):
-    #     """
-    #     Loads the model from the specified path.
-        
-    #     Parameters:
-    #         path (str): The path from where the model will be loaded.
-    #     """
-    #     pass
+            self.backward(total_loss)
+            self.optimizer.step()
+        if epoch == 0:
+            log_dict = {
+                f"gpu_{self.gpu_id}_output": outputs,
+                f"gpu_{self.gpu_id}_target": targets,
+            }
+            path = Path("cache/train/")
+            self.save_numpy(log_dict, path)
+
+    def evaluate(self):
+        self.model.eval()
+        # val_loss = 0.0
+
+        outputs = []
+        targets = []
+        # gpus = []
+        # num_batches = len(self.val_data_loader)
+        # total_val_loss = 0.0
+        # loss_dict_accumulator = {}  # To accumulate total losses by type
+        with torch.no_grad():
+            val_loss = 0
+            for source, target, avg_dt in (self.val_data_loader):
+                source = source.to(self.gpu_id)
+                target = target.to(self.gpu_id)
+                output = self.model(source)
+
+                outputs.append(output.cpu().detach().numpy())
+                targets.append(target.cpu().detach().numpy())
+                # gpus.append(self.gpu_id)
+
+        log_dict = {
+            f"gpu_{self.gpu_id}_output": outputs,
+            f"gpu_{self.gpu_id}_target": targets,
+        }
+        path = Path("cache/eval/")
+        self.save_numpy(log_dict, path)
+
+    
+    def reshape(self, tensor, shape):
+        """
+        Reshapes a given tensor to the specified shape.
+
+        Args:
+        tensor (torch.Tensor): The tensor to reshape.
+        shape (tuple): A tuple containing the desired shape.
+
+        Returns:
+        torch.Tensor: The reshaped tensor.
+        """
+        return tensor.reshape(*shape)
+    
+    def _load_snapshot(self, epoch):
+        loc = f"cuda:{self.gpu_id}"
+        class_name = str(type(self.model.module)).split('.')[-1][:-2]  # Extract class name 'Retina'
+        file_name = f"{self.snapshot_path}/{class_name}_epoch_{epoch}.pt"
+        snapshot = torch.load(file_name, map_location=loc)
+        self.model.load_state_dict(snapshot["MODEL_STATE"])
+        self.epochs_run = snapshot["EPOCHS_RUN"]
+        print(f"Resuming training from snapshot at Epoch {self.epochs_run}")
+
+    def _save_snapshot(self, epoch):
+        snapshot = {
+            "MODEL_STATE": self.model.module.state_dict(),
+            "EPOCHS_RUN": epoch,
+        }
+        class_name = str(type(self.model.module)).split('.')[-1][:-2]  # Extract class name 'Retina'
+        file_name = f"{self.snapshot_path}/{class_name}_epoch_{epoch}.pt"
+
+        torch.save(snapshot, file_name)
+        print(f"Epoch {epoch} | Training snapshot saved at {file_name}")

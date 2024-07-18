@@ -33,7 +33,7 @@
         "lr_model_lpf_tau": 1e-3,
         "decimation_rate": 1,
         "num_epochs": 200,
-        "batch_size": 32,
+        "batch_size": 1,
         "optimizer": "Adam",
         "scheduler": "StepLR",
         "train_with_exodus": false,

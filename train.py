@@ -5,7 +5,7 @@ from model.B_3ET import Baseline_3ET
 from model.ANN_retina import Retina
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
-from trainer.distributed_trainer import DistributedGPUTrainer
+from trainer.distributed_trainer_base import DistributedTrainerBase
 from torch.distributed import init_process_group, destroy_process_group
 import os
 from pathlib import Path
@@ -84,7 +84,6 @@ def create_losses_sequence(losses: list, dataset_params: dict, training_params: 
 def distributed_job(rank, world_size):
     setup_ddp(rank, world_size)
     config_path = "config/ini_30.json"
-    device_id = rank % torch.cuda.device_count()
     if config_path is not None:
         with open(config_path, 'r') as f:
             config_params = json.load(f)
@@ -160,7 +159,7 @@ def distributed_job(rank, world_size):
     dataloader_list.append(val_dataloader)
     dataloader_list.append(None)
     # train_dataloader = prepare_dataloader(train_dataset, batch_size)
-    trainer = DistributedGPUTrainer(model, rank, dataloader_list, optimizer, scheduler, criterions_sequence, metrics_sequence, save_every, snapshot_path)
+    trainer = DistributedTrainerBase(model, rank, dataloader_list, optimizer, scheduler, criterions_sequence, metrics_sequence, save_every, snapshot_path)
     trainer.train(num_epochs)
     trainer.evaluate()
     destroy_process_group()

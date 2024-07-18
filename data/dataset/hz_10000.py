@@ -23,6 +23,14 @@ import glob
 from abc import ABC, abstractmethod
 from collections import namedtuple
 import struct
+import numpy as np
+
+events_struct = np.dtype([
+    ('t', np.uint32),
+    ('x', np.uint16),
+    ('y', np.uint16),
+    ('pol', np.uint8)
+])
 
 'Types of data'
 Event = namedtuple('Event', 'polarity row col timestamp')
@@ -36,6 +44,11 @@ def glob_imgs(path):
     for ext in ['*.png', '*.jpg', '*.JPEG', '*.JPG']:
         imgs.extend(glob.glob(os.path.join(path,'**', ext), recursive=True))
     return imgs
+
+def extract_event_components(event_list):
+    # Since event_list is reversed, we can directly unpack it into separate components
+    pols, xs, ys, ts = event_list[::4], event_list[1::4], event_list[2::4], event_list[3::4]
+    return pols, xs, ys, ts
 
 'Reads an event file'
 def read_aerdat(filepath):
@@ -61,12 +74,15 @@ def read_aerdat(filepath):
 'Parses the filename of the frames'
 def get_path_info(path):
     path = path.split('/')[-1]
-    filename = path.split('.')[0]
+    filename = os.path.basename(path)
+    filename = filename.rsplit('.', 1)[0]
     path_parts = filename.split('_')
     index = int(path_parts[0])
+    row = int(path_parts[1])
+    col = int(path_parts[2])
     stimulus_type = path_parts[3]
     timestamp = int(path_parts[4])
-    return {'index': index, 'row': int(path_parts[1]), 'col': int(path_parts[2]), 'stimulus_type': stimulus_type,
+    return {'index': index, 'row': row, 'col': col, 'stimulus_type': stimulus_type,
             'timestamp': timestamp}
 class GetItemStrategy(ABC):
     @abstractmethod
@@ -76,11 +92,9 @@ class GetItemStrategy(ABC):
 class TonicTransformGetItemStrategy(GetItemStrategy):
     def get_item(self, dataset, transforms, index):
         
-        labels = dataset.load_labels(index)
-        events = dataset.load_events(index)
-        tmp_struct = make_structured_array(
-            events["xy"][:, 0], events["xy"][:, 1], events["t"], events["p"]
-        )
+        labels = dataset.labels(index)
+        events = dataset.events(index)
+        tmp_struct = events
         for transform in transforms:
             if transform == "time_jitter":
                 tj_fn = tonic.transforms.TimeJitter(std=100, clip_negative=True)
@@ -112,11 +126,9 @@ class TonicTransformGetItemStrategy(GetItemStrategy):
 class StaticWindowGetItemStrategy(GetItemStrategy):
     def get_item(self, dataset, transforms, index):
         
-        labels = dataset.load_labels(index)
-        events = dataset.load_events(index)
-        tmp_struct = make_structured_array(
-            events["xy"][:, 0], events["xy"][:, 1], events["t"], events["p"]
-        )
+        labels = dataset.labels
+        events = dataset.events
+        tmp_struct = events
         for transform in transforms:
             if transform == "time_jitter":
                 tj_fn = tonic.transforms.TimeJitter(std=100, clip_negative=True)
@@ -137,7 +149,7 @@ class StaticWindowGetItemStrategy(GetItemStrategy):
             "xy": np.hstack(
                 [tmp_struct["x"].reshape(-1, 1), tmp_struct["y"].reshape(-1, 1)]
             ),
-            "p": tmp_struct["p"] * 1,
+            "p": tmp_struct["pol"] * 1,
             "t": tmp_struct["t"],
         }
         events, labels = dataset.load_static_window(events, labels)
@@ -147,8 +159,9 @@ class StaticWindowGetItemStrategy(GetItemStrategy):
 
 class DynamicWindowGetItemStrategy(GetItemStrategy):
     def get_item(self, dataset, transforms, index):
-        labels = dataset.load_labels(index)
-        events = dataset.load_events(index)
+        
+        labels = dataset.labels(index)
+        events = dataset.events(index)
         tmp_struct = make_structured_array(
             events["xy"][:, 0], events["xy"][:, 1], events["t"], events["p"]
         )
@@ -202,8 +215,21 @@ class DatasetHz10000:
             self.get_item_strategy = StaticWindowGetItemStrategy()
         elif self.get_item_strategy == "dynamic_window":
             self.get_item_strategy = DynamicWindowGetItemStrategy()
+
+        # self.transform, self.target_transform = get_transforms(self.dataset_params, self.training_params)
         self.collect_data(0)
         self.collect_data(1)
+        pols, xs, ys, ts = extract_event_components(self.event_stack)
+        self.max_xs, self.min_xs = max(xs), min(xs)
+        self.max_ys, self.min_ys = max(ys), min(ys)
+        self.max_ts, self.min_ts = max(ts), min(ts)
+        print(f'Max x: {self.max_xs}, Min x: {self.min_xs}')
+        print(f'Max y: {self.max_ys}, Min y: {self.min_ys}')
+        print(f'Max t: {self.max_ts}, Min t: {self.min_ts}')
+        data = make_structured_array(ts, xs, ys, pols, dtype=events_struct)
+
+        self.events = data
+        self.avg_dt = 0
     def __len__(self):
         return len(self.y)
 
@@ -234,8 +260,8 @@ class DatasetHz10000:
     
     def load_static_window(self, data, labels):
         tab_start, tab_last = labels.iloc[0], labels.iloc[-1]
-        start_label = (int(tab_start.center_x.item()), int(tab_start.center_y.item()))
-        end_label = (int(tab_last.center_x.item()), int(tab_last.center_y.item()))
+        start_label = (int(tab_start.row.item()), int(tab_start.col.item()))
+        end_label = (int(tab_last.row.item()), int(tab_last.col.item()))
 
         start_time = tab_last["timestamp"] - self.fixed_window_dt * (self.num_bins + 1)
         evs_t = data["t"][data["t"] >= start_time]
@@ -262,25 +288,32 @@ class DatasetHz10000:
             elif idx == len(labels["timestamp"]):
                 x_axis.append(end_label[0])
                 y_axis.append(end_label[1])
-            else:  # Weighted interpolation
-                t0 = labels["timestamp"].iloc[idx - 1]
-                t1 = labels["timestamp"].iloc[idx]
-
-                weight0 = (t1 - fixed_tmp) / (t1 - t0)
-                weight1 = (fixed_tmp - t0) / (t1 - t0)
-
+            else:  
                 x_axis.append(
-                    int(
-                        labels.iloc[idx - 1]["center_x"] * weight0
-                        + labels.iloc[idx]["center_x"] * weight1
-                    )
+                    int(labels.iloc[idx]["row"])
                 )
                 y_axis.append(
-                    int(
-                        labels.iloc[idx - 1]["center_y"] * weight0
-                        + labels.iloc[idx]["center_y"] * weight1
-                    )
+                    int(labels.iloc[idx]["col"])
                 )
+                # Weighted interpolation
+                # t0 = labels["timestamp"].iloc[idx - 1]
+                # t1 = labels["timestamp"].iloc[idx]
+
+                # weight0 = (t1 - fixed_tmp) / (t1 - t0)
+                # weight1 = (fixed_tmp - t0) / (t1 - t0)
+
+                # x_axis.append(
+                #     int(
+                #         labels.iloc[idx - 1]["row"] * weight0
+                #         + labels.iloc[idx]["row"] * weight1
+                #     )
+                # )
+                # y_axis.append(
+                #     int(
+                #         labels.iloc[idx - 1]["col"] * weight0
+                #         + labels.iloc[idx]["col"] * weight1
+                #     )
+                # )
 
             # slice
             t = evs_t[start_idx:][evs_t[start_idx:] <= fixed_tmp]
@@ -308,17 +341,17 @@ class DatasetHz10000:
 
         frames = torch.rot90(torch.tensor(data), k=2, dims=(2, 3))
         frames = frames.permute(0, 1, 3, 2) 
-        labels = self.target_transform(np.vstack([x_axis, y_axis]))
-
+        x_axis = torch.tensor(x_axis)
+        y_axis = torch.tensor(y_axis)
+        labels = torch.stack((x_axis, y_axis), dim=1)
         self.avg_dt += (evs_t[-1] - evs_t[0]) / self.num_bins
-        self.items += 1
 
         return frames, labels
 
     def load_dynamic_window(self, data, labels):
         tab_start, tab_last = labels.iloc[0], labels.iloc[-1]
-        start_label = (int(tab_start.center_x.item()), int(tab_start.center_y.item()))
-        end_label = (int(tab_last.center_x.item()), int(tab_last.center_y.item()))
+        start_label = (int(tab_start.row.item()), int(tab_start.col.item()))
+        end_label = (int(tab_last.row.item()), int(tab_last.col.item()))
 
         evs_t, evs_p, evs_xy = data["t"], data["p"], data["xy"]
 
@@ -379,21 +412,23 @@ class DatasetHz10000:
 
                 x_axis.append(
                     int(
-                        labels.iloc[idx - 1]["center_x"] * weight0
-                        + labels.iloc[idx]["center_x"] * weight1
+                        labels.iloc[idx - 1]["row"] * weight0
+                        + labels.iloc[idx]["row"] * weight1
                     )
                 )
                 y_axis.append(
                     int(
-                        labels.iloc[idx - 1]["center_y"] * weight0
-                        + labels.iloc[idx]["center_y"] * weight1
+                        labels.iloc[idx - 1]["col"] * weight0
+                        + labels.iloc[idx]["col"] * weight1
                     )
                 )
         frames = torch.rot90(torch.tensor(data), k=2, dims=(2, 3))
         frames = frames.permute(0, 1, 3, 2)
         x_axis.reverse()
         y_axis.reverse()
-        labels = self.target_transform(np.vstack([x_axis, y_axis]))
+        x_axis = torch.tensor(x_axis)
+        y_axis = torch.tensor(y_axis)
+        labels = torch.stack((x_axis, y_axis), dim=1)
         avg_dt = (evs_t[-1] - evs_t[start_idx + len(xy)]) / self.num_bins
 
         return frames, labels, avg_dt
@@ -412,15 +447,19 @@ class DatasetHz10000:
         img_dir = os.path.join(self.data_dir, user_name, str(eye), 'frames')
         img_filepaths = list(glob_imgs(img_dir))
         img_filepaths.sort(key=lambda name: get_path_info(name)['index'])
-        img_filepaths.reverse()
+        label_list = []
+        # img_filepaths.reverse()
         for fpath in img_filepaths:
             path_info = get_path_info(fpath)
+            label_list.append(path_info)
             frame = Frame(path_info['row'], path_info['col'], fpath, path_info['timestamp'])
             filepath_list.append(frame)
+        self.labels = pd.DataFrame(label_list)
         return filepath_list
 
     def load_event_data(self, eye):
         user_name = "user" + str(self.user)
         event_file = os.path.join(self.data_dir, user_name, str(eye), 'events.aerdat')
         filepath_list = read_aerdat(event_file)
+        filepath_list.reverse()
         return filepath_list

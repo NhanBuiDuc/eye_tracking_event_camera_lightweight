@@ -5,8 +5,8 @@
         "data_dir": "data/dataset/eye_data",
         "num_bins": 64,
         "input_channel": 2,
-        "img_width": 346,
-        "img_height": 260, 
+        "img_width": 260,
+        "img_height": 346, 
         "filter_time": 500000,
         "fixed_window_dt": 2500, 
         "tonic_transforms": []
@@ -14,7 +14,7 @@
     "training_params": {
         "device": "cuda",
         "metrics": ["mean_squared_error"],
-        "losses": ["yolo_loss", "euclidian_loss"],
+        "losses": ["mean_squared_error"],
         "lr_model": 1e-4,
         "num_epochs": 200,
         "batch_size": 32,

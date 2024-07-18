@@ -211,9 +211,9 @@ class SimpleConvLSTM(nn.Module):
         self.convlstm1 = ConvLSTM(input_dim=input_dim, hidden_dim=8, kernel_size=(3, 3), num_layers=1, batch_first=True)
         self.bn1 = nn.BatchNorm3d(8)
         self.pool1 = nn.MaxPool3d(kernel_size=(1, 2, 2))
-        self.fc1 = nn.Linear(1024, 512)
+        self.fc1 = nn.Linear(8192, 512)
         self.drop = nn.Dropout(0.5)
-        self.fc2 = nn.Linear(512, 160)
+        self.fc2 = nn.Linear(512, 2)
         # get_summary(self)
 
     def forward(self, x):

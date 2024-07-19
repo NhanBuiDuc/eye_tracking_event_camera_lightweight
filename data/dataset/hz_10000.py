@@ -90,10 +90,8 @@ class GetItemStrategy(ABC):
         pass
 
 class TonicTransformGetItemStrategy(GetItemStrategy):
-    def get_item(self, dataset, transforms, index):
-        
-        labels = dataset.labels(index)
-        events = dataset.events(index)
+    def get_item(self, events, labels, dataset, transforms):
+
         tmp_struct = events
         for transform in transforms:
             if transform == "time_jitter":
@@ -124,10 +122,8 @@ class TonicTransformGetItemStrategy(GetItemStrategy):
         return event_tensor, labels_tensor, dataset.fixed_window_dt
 
 class StaticWindowGetItemStrategy(GetItemStrategy):
-    def get_item(self, dataset, transforms, index):
+    def get_item(self, events, labels, dataset, transforms):
         
-        labels = dataset.labels
-        events = dataset.events
         tmp_struct = events
         for transform in transforms:
             if transform == "time_jitter":
@@ -158,10 +154,8 @@ class StaticWindowGetItemStrategy(GetItemStrategy):
         return event_tensor, labels_tensor, dataset.fixed_window_dt
 
 class DynamicWindowGetItemStrategy(GetItemStrategy):
-    def get_item(self, dataset, transforms, index):
+    def get_item(self, labels, events, dataset, transforms):
         
-        labels = dataset.labels(index)
-        events = dataset.events(index)
         tmp_struct = make_structured_array(
             events["xy"][:, 0], events["xy"][:, 1], events["t"], events["p"]
         )
@@ -201,43 +195,78 @@ class DatasetHz10000:
         config_params: dict,
     ):
         self.user = 3
-        self.data_dir = f"data/dataset/eye_data/user{self.user}"
+        self.data_dir = f"data/dataset/eye_data"
         self.frame_stack = []
         self.event_stack = []
         self.split = split
+            
         # self.shuffle = shuffle
         for key, value in config_params.items():
             setattr(self, key, value)
             for sub_key, sub_value in value.items():
                 setattr(self, sub_key, sub_value)
+        if split == "train":
+            self.data_idx = self.train_set_idx
+        else:
+            self.data_idx = self.val_set_idx
 
         if self.get_item_strategy == "static_window":
             self.get_item_strategy = StaticWindowGetItemStrategy()
         elif self.get_item_strategy == "dynamic_window":
             self.get_item_strategy = DynamicWindowGetItemStrategy()
-
-        # self.transform, self.target_transform = get_transforms(self.dataset_params, self.training_params)
-        self.collect_data(0)
-        self.collect_data(1)
-        pols, xs, ys, ts = extract_event_components(self.event_stack)
-        self.max_xs, self.min_xs = max(xs), min(xs)
-        self.max_ys, self.min_ys = max(ys), min(ys)
-        self.max_ts, self.min_ts = max(ts), min(ts)
-        print(f'Max x: {self.max_xs}, Min x: {self.min_xs}')
-        print(f'Max y: {self.max_ys}, Min y: {self.min_ys}')
-        print(f'Max t: {self.max_ts}, Min t: {self.min_ts}')
-        data = make_structured_array(ts, xs, ys, pols, dtype=events_struct)
-
-        self.events = data
+        
+        self.all_data = {}
+        self.all_labels = {}
+        # Initialize the merged arrays
+        self.merged_data = []
+        self.merged_labels = []
         self.avg_dt = 0
+        for idx in self.data_idx:
+            # Initialize dictionaries for each idx
+            self.all_data[idx] = {}
+            self.all_labels[idx] = {}            
+            # self.transform, self.target_transform = get_transforms(self.dataset_params, self.training_params)
+            left_frame_stack, left_event_stack, left_labels = self.collect_data(idx, 0)
+            right_frame_stack, right_event_stack, right_labels = self.collect_data(idx, 1)
+            left_pols, left_xs, left_ys, left_ts = extract_event_components(left_event_stack)
+            right_pols, right_xs, right_ys, right_ts = extract_event_components(right_event_stack)
+            max_xs, min_xs = max(left_xs), min(left_xs)
+            max_ys, min_ys = max(left_ys), min(left_ys)
+            max_ts, min_ts = max(left_ts), min(left_ts)
+            print(f"User: {idx}")
+            print(f'Max x: {max_xs}, Min x: {min_xs}')
+            print(f'Max y: {max_ys}, Min y: {min_ys}')
+            print(f'Max t: {max_ts}, Min t: {min_ts}')
+            print(f'Max row label: {left_labels["row"].max()}, Min column label: {left_labels["col"].min()}')
+            left_eye_data = make_structured_array(left_ts, left_xs, left_ys, left_pols, dtype=events_struct)
+            right_eye_data = make_structured_array(right_ts, right_xs, right_ys, right_pols, dtype=events_struct)
+            # normalize
+            left_eye_data = self.input_transform(left_eye_data)
+            right_eye_data = self.input_transform(right_eye_data)
+
+            left_eye_voxel_grid_event, left_eye_labels, fixed_window_dt = self.get_item_strategy.get_item(left_eye_data, left_labels, self, self.tonic_transforms)
+
+            right_eye_voxel_grid_event, right_eye_labels, fixed_window_dt = self.get_item_strategy.get_item(right_eye_data, right_labels, self, self.tonic_transforms)
+
+            self.all_data[idx]["left_data"] = left_eye_voxel_grid_event
+            self.all_labels[idx]["left_label"] = left_eye_labels
+            self.all_data[idx]["right_data"] = right_eye_voxel_grid_event
+            self.all_labels[idx]["right_label"] = right_eye_labels
+            self.merged_data.append(left_eye_voxel_grid_event)
+            self.merged_data.append(right_eye_voxel_grid_event)
+            self.merged_labels.append(left_eye_labels)
+            self.merged_labels.append(right_eye_labels)
+            
     def __len__(self):
-        return len(self.y)
+        return len(self.merged_labels)
 
     def __repr__(self):
         return self.__class__.__name__
 
     def __getitem__(self, index):
-        return self.get_item_strategy.get_item(self, self.tonic_transforms, index)
+        data = self.merged_data[index]
+        label = self.merged_labels[index]
+        return data, label
     
     def find_first_n_unique_pairs(self, events, N):
         seen_pairs = set()
@@ -344,7 +373,7 @@ class DatasetHz10000:
         x_axis = torch.tensor(x_axis)
         y_axis = torch.tensor(y_axis)
         labels = torch.stack((x_axis, y_axis), dim=1)
-        self.avg_dt += (evs_t[-1] - evs_t[0]) / self.num_bins
+        # self.avg_dt += (evs_t[-1] - evs_t[0]) / self.num_bins
 
         return frames, labels
 
@@ -433,17 +462,18 @@ class DatasetHz10000:
 
         return frames, labels, avg_dt
     'Loads in data from the data_dir as filenames'
-    def collect_data(self, eye=0):
+    def collect_data(self, user_id, eye=0):
         print('Loading Frames....')
-        self.frame_stack = self.load_frame_data(eye)
-        print('There are ' + str(len(self.frame_stack)) + ' frames \n')
+        frame_stack, labels = self.load_frame_data(user_id, eye)
+        print('There are ' + str(len(frame_stack)) + ' frames \n')
         print('Loading Events....')
-        self.event_stack = self.load_event_data(eye)
-        print('There are ' + str(len(self.event_stack)) + ' events \n')
-
-    def load_frame_data(self, eye):
+        event_stack = self.load_event_data(user_id, eye)
+        print('There are ' + str(len(event_stack)) + ' events \n')
+        return frame_stack, event_stack, labels
+    
+    def load_frame_data(self, user_id, eye):
         filepath_list = []
-        user_name = "user" + str(self.user)
+        user_name = "user" + str(user_id)
         img_dir = os.path.join(self.data_dir, user_name, str(eye), 'frames')
         img_filepaths = list(glob_imgs(img_dir))
         img_filepaths.sort(key=lambda name: get_path_info(name)['index'])
@@ -454,12 +484,26 @@ class DatasetHz10000:
             label_list.append(path_info)
             frame = Frame(path_info['row'], path_info['col'], fpath, path_info['timestamp'])
             filepath_list.append(frame)
-        self.labels = pd.DataFrame(label_list)
-        return filepath_list
+        labels = pd.DataFrame(label_list)
+        return filepath_list, labels
 
-    def load_event_data(self, eye):
-        user_name = "user" + str(self.user)
+    def load_event_data(self, user_id, eye):
+        user_name = "user" + str(user_id)
         event_file = os.path.join(self.data_dir, user_name, str(eye), 'events.aerdat')
         filepath_list = read_aerdat(event_file)
         filepath_list.reverse()
         return filepath_list
+    def input_transform(self, input):
+        max_x_range = self.davis_sensor_size[0]
+        max_y_range = self.davis_sensor_size[1]
+        desired_x = self.img_width
+        desired_y = self.img_height
+        scale_x = desired_x / max_x_range
+        scale_y = desired_y / max_y_range
+        input["x"] = (input["x"] * scale_x).astype(int)
+        input["y"] = (input["y"] * scale_y).astype(int)
+        print("Normalized input maximum value: ", input["x"].max())
+        print("Normalized input maximum value: ", input["y"].max())
+        return input
+    def target_transform(self, target):
+        pass

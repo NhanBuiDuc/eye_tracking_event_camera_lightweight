@@ -93,7 +93,7 @@ class DistributedTrainerBase(ABC):
         outputs = []
         targets = []
         # gpus = []
-        for source, target, avg_dt in (self.train_data_loader):
+        for source, target in (self.train_data_loader):
             b, t, c, w, h = target.shape
             source = source.to(self.gpu_id)
             target = target.to(self.gpu_id)

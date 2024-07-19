@@ -8,12 +8,15 @@
         "num_bins": 64,
         "input_channel": 2,
         "davis_sensor_size": [260, 346],
-        "distance_user_camera": 25,
+        "stimulus_screen_size": [1080, 1920],
+        "distance_user_camera": 40,
+        "focal_length": 25,
         "img_width": 64,
         "img_height": 64, 
         "filter_time": 500000,
-        "fixed_window_dt": 2500, 
-        "tonic_transforms": []
+        "fixed_window_dt": 10000, 
+        "tonic_transforms": [],
+        "use_cache": true
     },
     "training_params": {
         "device": "cuda",

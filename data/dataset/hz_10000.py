@@ -24,6 +24,7 @@ from abc import ABC, abstractmethod
 from collections import namedtuple
 import struct
 import numpy as np
+from sklearn.preprocessing import MinMaxScaler
 
 events_struct = np.dtype([
     ('t', np.uint32),
@@ -84,6 +85,37 @@ def get_path_info(path):
     timestamp = int(path_parts[4])
     return {'index': index, 'row': row, 'col': col, 'stimulus_type': stimulus_type,
             'timestamp': timestamp}
+
+def find_closest_index(df, target, timestep):
+    # Create a copy of the DataFrame
+    df = df.copy()
+    
+    # Extract x and y from the target list
+    target_x, target_y = target
+    
+    # Ensure columns are numeric if necessary
+    df['row'] = pd.to_numeric(df['row'], errors='coerce')
+    df['col'] = pd.to_numeric(df['col'], errors='coerce')
+    
+    # Filter to include only rows with a timestamp larger than the given timestep
+    df_filtered = df[df['timestamp'] > timestep]
+    
+    # Ensure that we have rows after timestamp filtering
+    if df_filtered.empty:
+        return None
+    
+    # Find rows where either the row or col column differs from target_x or target_y
+    df_filtered = df_filtered[
+        (df_filtered['row'] != target_x) | (df_filtered['col'] != target_y)
+    ]
+    
+    # If no rows meet the criteria, return None
+    if df_filtered.empty:
+        return None
+    
+    # Return the index of the first row that meets the criteria
+    return df_filtered.index[0]
+    
 class GetItemStrategy(ABC):
     @abstractmethod
     def get_item(self, dataset, index):
@@ -149,9 +181,9 @@ class StaticWindowGetItemStrategy(GetItemStrategy):
             "t": tmp_struct["t"],
         }
         events, labels = dataset.load_static_window(events, labels)
-        event_tensor = events.float()
-        labels_tensor = labels.float()
-        return event_tensor, labels_tensor, dataset.fixed_window_dt
+        # event_tensor = events.float()
+        # labels = np.concatenate(labels, axis=0)
+        return events, labels, dataset.fixed_window_dt
 
 class DynamicWindowGetItemStrategy(GetItemStrategy):
     def get_item(self, labels, events, dataset, transforms):
@@ -183,9 +215,9 @@ class DynamicWindowGetItemStrategy(GetItemStrategy):
             "t": tmp_struct["t"],
         }
         events, labels, avg_dt = dataset.load_dynamic_window(events, labels)
-        event_tensor = events.float()
-        labels_tensor = labels.float()
-        return event_tensor, labels_tensor, avg_dt
+        # event_tensor = events.float()
+        # labels_tensor = labels.float()
+        return events, labels, avg_dt
 
 
 class DatasetHz10000:
@@ -222,12 +254,14 @@ class DatasetHz10000:
         self.merged_labels = []
         self.avg_dt = 0
         for idx in self.data_idx:
+
             # Initialize dictionaries for each idx
             self.all_data[idx] = {}
             self.all_labels[idx] = {}            
             # self.transform, self.target_transform = get_transforms(self.dataset_params, self.training_params)
             left_frame_stack, left_event_stack, left_labels = self.collect_data(idx, 0)
             right_frame_stack, right_event_stack, right_labels = self.collect_data(idx, 1)
+            
             left_pols, left_xs, left_ys, left_ts = extract_event_components(left_event_stack)
             right_pols, right_xs, right_ys, right_ts = extract_event_components(right_event_stack)
             max_xs, min_xs = max(left_xs), min(left_xs)
@@ -237,25 +271,33 @@ class DatasetHz10000:
             print(f'Max x: {max_xs}, Min x: {min_xs}')
             print(f'Max y: {max_ys}, Min y: {min_ys}')
             print(f'Max t: {max_ts}, Min t: {min_ts}')
-            print(f'Max row label: {left_labels["row"].max()}, Min column label: {left_labels["col"].min()}')
+            print(f'Max row label: {left_labels["row"].max()}, Max column label: {left_labels["col"].max()}')
+
             left_eye_data = make_structured_array(left_ts, left_xs, left_ys, left_pols, dtype=events_struct)
             right_eye_data = make_structured_array(right_ts, right_xs, right_ys, right_pols, dtype=events_struct)
             # normalize
             left_eye_data = self.input_transform(left_eye_data)
             right_eye_data = self.input_transform(right_eye_data)
 
-            left_eye_voxel_grid_event, left_eye_labels, fixed_window_dt = self.get_item_strategy.get_item(left_eye_data, left_labels, self, self.tonic_transforms)
+            left_eye_data, left_labels, fixed_window_dt = self.get_item_strategy.get_item(left_eye_data, left_labels, self, self.tonic_transforms)
+            right_eye_data, right_labels, fixed_window_dt = self.get_item_strategy.get_item(right_eye_data, right_labels, self, self.tonic_transforms)
 
-            right_eye_voxel_grid_event, right_eye_labels, fixed_window_dt = self.get_item_strategy.get_item(right_eye_data, right_labels, self, self.tonic_transforms)
+            left_labels = self.target_transform(left_labels)
+            right_labels = self.target_transform(right_labels)
 
-            self.all_data[idx]["left_data"] = left_eye_voxel_grid_event
-            self.all_labels[idx]["left_label"] = left_eye_labels
-            self.all_data[idx]["right_data"] = right_eye_voxel_grid_event
-            self.all_labels[idx]["right_label"] = right_eye_labels
-            self.merged_data.append(left_eye_voxel_grid_event)
-            self.merged_data.append(right_eye_voxel_grid_event)
-            self.merged_labels.append(left_eye_labels)
-            self.merged_labels.append(right_eye_labels)
+            # np.save(f"cache/user{idx}.npy")
+
+            print(f'Max row label after normalization: {left_labels["row"].max()}, Max column label after normalization: {left_labels["col"].max()}')
+            print(f'Min row label after normalization: {left_labels["row"].min()}, Min column label after normalization: {left_labels["col"].min()}')
+
+            self.all_data[idx]["left_data"] = left_eye_data
+            self.all_labels[idx]["left_label"] = left_labels
+            self.all_data[idx]["right_data"] = right_eye_data
+            self.all_labels[idx]["right_label"] = right_labels
+            self.merged_data.append(left_eye_data)
+            self.merged_data.append(right_eye_data)
+            self.merged_labels.append(left_labels)
+            self.merged_labels.append(right_labels)
             
     def __len__(self):
         return len(self.merged_labels)
@@ -287,95 +329,200 @@ class DatasetHz10000:
 
         return np.array(result)
     
+
+
     def load_static_window(self, data, labels):
+        # label start and last
         tab_start, tab_last = labels.iloc[0], labels.iloc[-1]
-        start_label = (int(tab_start.row.item()), int(tab_start.col.item()))
-        end_label = (int(tab_last.row.item()), int(tab_last.col.item()))
+        # start_label = (int(tab_start.row.item()), int(tab_start.col.item()))
+        # end_label = (int(tab_last.row.item()), int(tab_last.col.item()))
+        end_time = tab_start["timestamp"] + self.fixed_window_dt * self.num_bins
+        start_time = tab_start["timestamp"] # self.fixed_window_dt -> nano second
 
-        start_time = tab_last["timestamp"] - self.fixed_window_dt * (self.num_bins + 1)
-        evs_t = data["t"][data["t"] >= start_time]
-        evs_p, evs_xy = data["p"][-evs_t.shape[0] :], data["xy"][-evs_t.shape[0] :, :]
+        # append multiple data slices
+        batch_data = []
+        batch_label = []
+        while(end_time < tab_last["timestamp"]):
 
-        # frame
-        data = np.zeros(
-            (self.num_bins, self.input_channel, self.img_width, self.img_height)
-        )
+            # start_label = (int(tab_start.row.item()), int(tab_start.col.item()))
+            # end_label = (int(tab_last.row.item()), int(tab_last.col.item()))
+            evs_t = data["t"][data["t"] >= start_time]
+            evs_p, evs_xy = data["p"][-evs_t.shape[0] :], data["xy"][-evs_t.shape[0] :, :]
 
-        # indexes
-        start_idx = 0
+            # frame
+            data_temp = np.zeros(
+                (self.num_bins, self.input_channel, self.img_width, self.img_height)
+            )
 
-        # get intermediary labels based on num of bins
-        fixed_timestamps = np.linspace(start_time, tab_last["timestamp"], self.num_bins)
-        x_axis, y_axis = [], []
+            # indexes
+            start_idx = 0
 
-        for i, fixed_tmp in enumerate(fixed_timestamps):
-            # label
-            idx = np.searchsorted(labels["timestamp"], fixed_tmp, side="left")
-            if idx == 0:
-                x_axis.append(start_label[0])
-                y_axis.append(start_label[1])
-            elif idx == len(labels["timestamp"]):
-                x_axis.append(end_label[0])
-                y_axis.append(end_label[1])
-            else:  
-                x_axis.append(
-                    int(labels.iloc[idx]["row"])
-                )
-                y_axis.append(
-                    int(labels.iloc[idx]["col"])
-                )
-                # Weighted interpolation
-                # t0 = labels["timestamp"].iloc[idx - 1]
-                # t1 = labels["timestamp"].iloc[idx]
-
-                # weight0 = (t1 - fixed_tmp) / (t1 - t0)
-                # weight1 = (fixed_tmp - t0) / (t1 - t0)
-
+            # get intermediary labels based on num of bins
+            fixed_timestamps = np.linspace(start_time, end_time, self.num_bins)
+            x_axis, y_axis = [], []
+            
+            for i, fixed_tmp in enumerate(fixed_timestamps):
+                x = None
+                y = None
+                # label
+                idx = np.searchsorted(labels["timestamp"], fixed_tmp, side="left")
+                row = int(labels.iloc[idx]["row"])
+                col = int(labels.iloc[idx]["col"])
+                if row == 0 and col == 0:
+                    break
                 # x_axis.append(
-                #     int(
-                #         labels.iloc[idx - 1]["row"] * weight0
-                #         + labels.iloc[idx]["row"] * weight1
-                #     )
+                #     row
                 # )
                 # y_axis.append(
-                #     int(
-                #         labels.iloc[idx - 1]["col"] * weight0
-                #         + labels.iloc[idx]["col"] * weight1
-                #     )
+                #     col
                 # )
+                # Weighted interpolation
+                t0 = labels["timestamp"].iloc[idx - 1]
+                t1 = labels["timestamp"].iloc[idx]
 
-            # slice
-            t = evs_t[start_idx:][evs_t[start_idx:] <= fixed_tmp]
-            if t.shape[0] == 0:
-                continue
-            xy = evs_xy[start_idx : start_idx + t.shape[0], :]
-            p = evs_p[start_idx : start_idx + t.shape[0]]
+                weight0 = (t1 - fixed_tmp) / (t1 - t0)
+                weight1 = (fixed_tmp - t0) / (t1 - t0)
 
-            np.add.at(data[i, 0], (xy[p == 0, 0], xy[p == 0, 1]), 1)
-            if self.input_channel > 1:
-                np.add.at(
-                    data[i, self.input_channel - 1], (xy[p == 1, 0], xy[p == 1, 1]), 1
+                x_axis.append(
+                    int(
+                        labels.iloc[idx - 1]["row"] * weight0
+                        + labels.iloc[idx]["row"] * weight1
+                    )
                 )
-                data[i, 0, :, :][
-                    data[i, 1, :, :] >= data[i, 0, :, :]
-                ] = 0  # if ch 1 has more evs than 0
-                data[i, 1, :, :][
-                    data[i, 1, :, :] < data[i, 0, :, :]
-                ] = 0  # if ch 0 has more evs than 1
+                y_axis.append(
+                    int(
+                        labels.iloc[idx - 1]["col"] * weight0
+                        + labels.iloc[idx]["col"] * weight1
+                    )
+                )
 
-            data[i] = data[i].clip(0, 1)  # no double events
+                # slice
+                t = evs_t[start_idx:][evs_t[start_idx:] <= fixed_tmp]
+                if t.shape[0] == 0:
+                    continue
+                xy = evs_xy[start_idx : start_idx + t.shape[0], :]
+                p = evs_p[start_idx : start_idx + t.shape[0]]
 
-            # move pointers
-            start_idx += t.shape[0]
+                np.add.at(data_temp[i, 0], (xy[p == 0, 0], xy[p == 0, 1]), 1)
+                if self.input_channel > 1:
+                    np.add.at(
+                        data_temp[i, self.input_channel - 1], (xy[p == 1, 0], xy[p == 1, 1]), 1
+                    )
+                    data_temp[i, 0, :, :][
+                        data_temp[i, 1, :, :] >= data_temp[i, 0, :, :]
+                    ] = 0  # if ch 1 has more evs than 0
+                    data_temp[i, 1, :, :][
+                        data_temp[i, 1, :, :] < data_temp[i, 0, :, :]
+                    ] = 0  # if ch 0 has more evs than 1
 
-        frames = torch.rot90(torch.tensor(data), k=2, dims=(2, 3))
-        frames = frames.permute(0, 1, 3, 2) 
-        x_axis = torch.tensor(x_axis)
-        y_axis = torch.tensor(y_axis)
-        labels = torch.stack((x_axis, y_axis), dim=1)
-        # self.avg_dt += (evs_t[-1] - evs_t[0]) / self.num_bins
+                data_temp[i] = data_temp[i].clip(0, 1)  # no double events
 
-        return frames, labels
+                # move pointers
+                start_idx += t.shape[0]
+                # frames = torch.rot90(torch.tensor(data_temp), k=2, dims=(2, 3))
+                # frames = frames.permute(0, 1, 3, 2) 
+                # frames = torch.tensor(data_temp)
+                x = np.array(x_axis)
+                y = np.array(y_axis)
+        
+                batch_data.append(data_temp)
+                batch_label.append(np.column_stack((x, y)))
+
+            if x is not None or y is not None: 
+                idx = find_closest_index(labels, [x[-1], y[-1]], end_time)
+                start_time = labels["timestamp"].iloc[idx]   
+                end_time = start_time + self.fixed_window_dt * self.num_bins
+            else:
+                idx = find_closest_index(labels, [0, 0], end_time)
+                start_time = labels["timestamp"].iloc[idx]   
+                end_time = start_time + self.fixed_window_dt * self.num_bins     
+        # batch_data = torch.stack(batch_data)
+        # batch_label = torch.stack(batch_label)
+
+        return batch_data, batch_label
+
+    # def load_static_window(self, data, labels):
+        # tab_start, tab_last = labels.iloc[0], labels.iloc[-1]
+        # start_label = (int(tab_start.row.item()), int(tab_start.col.item()))
+        # end_label = (int(tab_last.row.item()), int(tab_last.col.item()))
+
+        # start_time = tab_last["timestamp"] - self.fixed_window_dt * (self.num_bins + 1)
+        # evs_t = data["t"][data["t"] >= start_time]
+        # evs_p, evs_xy = data["p"][-evs_t.shape[0] :], data["xy"][-evs_t.shape[0] :, :]
+
+        # # frame
+        # data = np.zeros(
+        #     (self.num_bins, self.input_channel, self.img_width, self.img_height)
+        # )
+
+        # # indexes
+        # start_idx = 0
+
+        # # get intermediary labels based on num of bins
+        # fixed_timestamps = np.linspace(start_time, tab_last["timestamp"], self.num_bins)
+        # x_axis, y_axis = [], []
+
+        # for i, fixed_tmp in enumerate(fixed_timestamps):
+        #     # label
+        #     idx = np.searchsorted(labels["timestamp"], fixed_tmp, side="left")
+        #     if idx == 0:
+        #         x_axis.append(start_label[0])
+        #         y_axis.append(start_label[1])
+        #     elif idx == len(labels["timestamp"]):
+        #         x_axis.append(end_label[0])
+        #         y_axis.append(end_label[1])
+        #     else:  # Weighted interpolation
+        #         t0 = labels["timestamp"].iloc[idx - 1]
+        #         t1 = labels["timestamp"].iloc[idx]
+
+        #         weight0 = (t1 - fixed_tmp) / (t1 - t0)
+        #         weight1 = (fixed_tmp - t0) / (t1 - t0)
+
+        #         x_axis.append(
+        #             int(
+        #                 labels.iloc[idx - 1]["row"] * weight0
+        #                 + labels.iloc[idx]["row"] * weight1
+        #             )
+        #         )
+        #         y_axis.append(
+        #             int(
+        #                 labels.iloc[idx - 1]["col"] * weight0
+        #                 + labels.iloc[idx]["col"] * weight1
+        #             )
+        #         )
+
+        #     # slice
+        #     t = evs_t[start_idx:][evs_t[start_idx:] <= fixed_tmp]
+        #     if t.shape[0] == 0:
+        #         continue
+        #     xy = evs_xy[start_idx : start_idx + t.shape[0], :]
+        #     p = evs_p[start_idx : start_idx + t.shape[0]]
+
+        #     np.add.at(data[i, 0], (xy[p == 0, 0], xy[p == 0, 1]), 1)
+        #     if self.input_channel > 1:
+        #         np.add.at(
+        #             data[i, self.input_channel - 1], (xy[p == 1, 0], xy[p == 1, 1]), 1
+        #         )
+        #         data[i, 0, :, :][
+        #             data[i, 1, :, :] >= data[i, 0, :, :]
+        #         ] = 0  # if ch 1 has more evs than 0
+        #         data[i, 1, :, :][
+        #             data[i, 1, :, :] < data[i, 0, :, :]
+        #         ] = 0  # if ch 0 has more evs than 1
+
+        #     data[i] = data[i].clip(0, 1)  # no double events
+
+        #     # move pointers
+        #     start_idx += t.shape[0]
+
+        # # frames = torch.rot90(torch.tensor(data), k=2, dims=(2, 3))
+        # # frames = frames.permute(0, 1, 3, 2) 
+        # # labels = self.target_transform(np.vstack([x_axis, y_axis]))
+
+        # # self.avg_dt += (evs_t[-1] - evs_t[0]) / self.num_bins
+        # # self.items += 1
+        # labels = np.column_stack((x_axis, y_axis))
+        # return data, labels
 
     def load_dynamic_window(self, data, labels):
         tab_start, tab_last = labels.iloc[0], labels.iloc[-1]
@@ -503,7 +650,29 @@ class DatasetHz10000:
         input["x"] = (input["x"] * scale_x).astype(int)
         input["y"] = (input["y"] * scale_y).astype(int)
         print("Normalized input maximum value: ", input["x"].max())
-        print("Normalized input maximum value: ", input["y"].max())
+        print("Normalized label maximum value: ", input["y"].max())
         return input
-    def target_transform(self, target):
-        pass
+    
+    def target_transform(self, target: List):
+
+
+        """
+        Normalize a list of numpy arrays to the range [0, 1] for each dimension separately.
+        
+        Parameters:
+            arrays (list of numpy.ndarray): List of numpy arrays each with shape (64, 2).
+        
+        Returns:
+            list of numpy.ndarray: List of normalized numpy arrays.
+        """
+
+        # Ensure that the list is not empty
+        # if not target:
+        #     raise ValueError("The list of arrays is empty.")
+        
+        # Normalize each array
+        for idx, array in enumerate(target):
+            target[idx][0] = array[0] / self.stimulus_screen_size[0]
+            target[idx][1] = array[1] / self.stimulus_screen_size[1]
+
+        return target

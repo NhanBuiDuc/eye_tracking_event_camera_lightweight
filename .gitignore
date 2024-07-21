@@ -3,3 +3,4 @@ data/dataset/evs_ini30/** */
 data/dataset/eye_data
 data/dataset/eye_data/** */
 cache/** */
+cache/eye_data/** */

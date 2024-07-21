@@ -143,6 +143,33 @@ class Trainer(ABC):
         path = Path("cache/eval/")
         self.save_numpy(log_dict, path)
 
+    def test(self):
+        self.model.eval()
+        # val_loss = 0.0
+
+        outputs = []
+        targets = []
+        # gpus = []
+        # num_batches = len(self.val_data_loader)
+        # total_val_loss = 0.0
+        # loss_dict_accumulator = {}  # To accumulate total losses by type
+        with torch.no_grad():
+            val_loss = 0
+            for source, target, avg_dt in (self.test_data_loader):
+                source = source.to(self.gpu_id)
+                target = target.to(self.gpu_id)
+                output = self.model(source)
+
+                outputs.append(output.cpu().detach().numpy())
+                targets.append(target.cpu().detach().numpy())
+                # gpus.append(self.gpu_id)
+
+        log_dict = {
+            f"gpu_{self.gpu_id}_output": outputs,
+            f"gpu_{self.gpu_id}_target": targets,
+        }
+        path = Path("cache/eval/")
+        self.save_numpy(log_dict, path)
     
     def reshape(self, tensor, shape):
         """

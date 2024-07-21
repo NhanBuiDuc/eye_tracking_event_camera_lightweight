@@ -160,7 +160,7 @@ class DistributedTrainerBase(ABC):
         # loss_dict_accumulator = {}  # To accumulate total losses by type
         with torch.no_grad():
             val_loss = 0
-            for source, target in (self.val_data_loader):
+            for source, target in (self.test_data_loader):
                 source = source.to(self.gpu_id)
                 target = target.to(self.gpu_id)
                 output = self.model(source)

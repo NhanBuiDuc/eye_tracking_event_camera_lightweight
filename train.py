@@ -146,18 +146,21 @@ def distributed_job(rank, world_size):
     metrics_sequence = create_metrics_sequence(metrics)
     train_dataset = Ini30Dataset(split="train", config_params=config_params)  # Example dataset
     val_dataset = Ini30Dataset(split="val", config_params=config_params)  # Example dataset
+    test_dataset = Ini30Dataset(split="test", config_params=config_params)  # Example dataset
     if short_train:
         train_dataset = torch.utils.data.Subset(train_dataset, range(100))
         val_dataset = torch.utils.data.Subset(val_dataset, range(100))
+        test_dataset = torch.utils.data.Subset(val_dataset, range(100))
     # test_dataset = Ini30Dataset(split="test", config_json_path=config_params)  # Example dataset
     dataloader_list = []
     optimizer = torch.optim.SGD(model.parameters(), lr=1e-3)
 
     train_dataloader = prepare_dataloader(train_dataset, batch_size)
     val_dataloader = prepare_dataloader(val_dataset, batch_size)
+    test_dataloader = prepare_dataloader(test_dataset, batch_size)
     dataloader_list.append(train_dataloader)
     dataloader_list.append(val_dataloader)
-    dataloader_list.append(None)
+    dataloader_list.append(test_dataloader)
     # train_dataloader = prepare_dataloader(train_dataset, batch_size)
     trainer = DistributedTrainerBase(model, rank, dataloader_list, optimizer, scheduler, criterions_sequence, metrics_sequence, save_every, snapshot_path)
     trainer.train(num_epochs)

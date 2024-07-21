@@ -501,7 +501,7 @@ class DatasetHz10000:
             #     pass
         # batch_data = torch.stack(batch_data)
         # batch_label = torch.stack(batch_label)
-            break
+            # break
         return np.vstack(batch_data).astype(np.float32), np.vstack(batch_label).astype(np.float32)
 
     # def load_static_window(self, data, labels):

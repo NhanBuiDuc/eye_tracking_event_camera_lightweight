@@ -1,6 +1,6 @@
 import os
 import numpy as np
-from metrics.YoloMetric import YoloMetric
+from metrics.AngularError import AngularError
 from metrics.metric_base import MetricSequence
 import json
 import torch
@@ -40,7 +40,7 @@ dataset_params = config_params["dataset_params"]
 training_params = config_params["training_params"]
 
 metrics = []
-metrics.append(YoloMetric(dataset_params, training_params))
+metrics.append(AngularError(dataset_params, training_params))
 metric_sequence = MetricSequence(metrics)
 metrics = metric_sequence(outputs, targets)
 metric_sequence.to_csv(path="log/metrics.csv", keys_to_log=["total_yolo_loss", "loss", "detection_rate"])

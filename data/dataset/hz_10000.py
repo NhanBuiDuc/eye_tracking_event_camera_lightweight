@@ -344,12 +344,12 @@ class DatasetHz10000:
             timestamp = labels.iloc[idx]['timestamp']
             print(timestamp)
             if idx != 0:
-                start_time = timestamp - self.fixed_window_dt * self.num_bins / 2
+                start_time = timestamp - self.fixed_window_dt * self.num_bins / 512
             else:
                 start_time = timestamp
 
             if idx != len(labels) - 1:
-                end_time = timestamp + self.fixed_window_dt * self.num_bins / 2
+                end_time = timestamp + self.fixed_window_dt * self.num_bins / 512
             else:
                 end_time = timestamp
             #print(timestamp, start_time, end_time)

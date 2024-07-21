@@ -488,9 +488,14 @@ class DatasetHz10000:
             
             batch_data.append(data_temp)
             batch_label.append(np.column_stack((x_axis, y_axis)))
-            idx = find_closest_index(labels, [x_axis[-1], y_axis[-1]], end_time, return_last=False)
-            start_time = labels["timestamp"].iloc[idx]   
-            end_time = start_time + self.fixed_window_dt * self.num_bins
+            try:
+                idx = find_closest_index(labels, [x_axis[-1], y_axis[-1]], end_time, return_last=False)
+                start_time = labels["timestamp"].iloc[idx]   
+                end_time = start_time + self.fixed_window_dt * self.num_bins
+            except:
+                start_time = end_time
+                end_time = start_time + self.fixed_window_dt * self.num_bins                
+
             # if skip == False:             
 
             # else:

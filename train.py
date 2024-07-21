@@ -162,6 +162,7 @@ def distributed_job(rank, world_size):
     trainer = DistributedTrainerBase(model, rank, dataloader_list, optimizer, scheduler, criterions_sequence, metrics_sequence, save_every, snapshot_path)
     trainer.train(num_epochs)
     trainer.evaluate()
+    trainer.test()
     destroy_process_group()
 
 if __name__ == "__main__":

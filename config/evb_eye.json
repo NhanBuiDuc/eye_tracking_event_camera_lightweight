@@ -2,9 +2,10 @@
     "dataset_params": { 
         "dataset_name": "eye_data",
         "get_item_strategy": "static_window",
-        "train_set_idx": [3],
-        "val_set_idx": [9],
+        "train_set_idx": [1, 2],
+        "val_set_idx": [3],
         "data_dir": "data/dataset/eye_data",
+        "cache_data_dir": "cache/eye_data",
         "num_bins": 64,
         "input_channel": 2,
         "davis_sensor_size": [260, 346],
@@ -16,7 +17,8 @@
         "filter_time": 500000,
         "fixed_window_dt": 10000, 
         "tonic_transforms": [],
-        "use_cache": true
+        "use_cache": false,
+        "split_ratio": 0.7
     },
     "training_params": {
         "device": "cuda",

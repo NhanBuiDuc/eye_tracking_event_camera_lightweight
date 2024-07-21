@@ -159,7 +159,7 @@ class Trainer(ABC):
     
     def _load_snapshot(self, epoch):
         loc = f"cuda:{self.gpu_id}"
-        class_name = str(type(self.model.module)).split('.')[-1][:-2]  # Extract class name 'Retina'
+        class_name = str(type(self.model)).split('.')[-1][:-2]  # Extract class name 'Retina'
         file_name = f"{self.snapshot_path}/{class_name}_epoch_{epoch}.pt"
         snapshot = torch.load(file_name, map_location=loc)
         self.model.load_state_dict(snapshot["MODEL_STATE"])
@@ -168,10 +168,10 @@ class Trainer(ABC):
 
     def _save_snapshot(self, epoch):
         snapshot = {
-            "MODEL_STATE": self.model.module.state_dict(),
+            "MODEL_STATE": self.model.state_dict(),
             "EPOCHS_RUN": epoch,
         }
-        class_name = str(type(self.model.module)).split('.')[-1][:-2]  # Extract class name 'Retina'
+        class_name = str(type(self.model)).split('.')[-1][:-2]  # Extract class name 'Retina'
         file_name = f"{self.snapshot_path}/{class_name}_epoch_{epoch}.pt"
 
         torch.save(snapshot, file_name)

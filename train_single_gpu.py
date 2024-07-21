@@ -99,7 +99,7 @@ def main():
     # Create a Path object
     path = Path(snapshot_path)
     path.mkdir(parents=True, exist_ok=True)
-    short_train = True
+    short_train = False
     
     if arch_name == "3ET":
         model = Baseline_3ET(

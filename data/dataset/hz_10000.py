@@ -25,7 +25,7 @@ from collections import namedtuple
 import struct
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler
-
+from sklearn.model_selection import train_test_split
 events_struct = np.dtype([
     ('t', np.uint32),
     ('x', np.uint16),
@@ -86,7 +86,7 @@ def get_path_info(path):
     return {'index': index, 'row': row, 'col': col, 'stimulus_type': stimulus_type,
             'timestamp': timestamp}
 
-def find_closest_index(df, target, timestep):
+def find_closest_index(df, target, start_time, return_last):
     # Create a copy of the DataFrame
     df = df.copy()
     
@@ -98,7 +98,7 @@ def find_closest_index(df, target, timestep):
     df['col'] = pd.to_numeric(df['col'], errors='coerce')
     
     # Filter to include only rows with a timestamp larger than the given timestep
-    df_filtered = df[df['timestamp'] > timestep]
+    df_filtered = df[df['timestamp'] > start_time]
     
     # Ensure that we have rows after timestamp filtering
     if df_filtered.empty:
@@ -112,8 +112,9 @@ def find_closest_index(df, target, timestep):
     # If no rows meet the criteria, return None
     if df_filtered.empty:
         return None
-    
-    # Return the index of the first row that meets the criteria
+    if return_last == True:
+        # Return the index of the first row that meets the criteria
+        return df_filtered.index[-1]
     return df_filtered.index[0]
     
 class GetItemStrategy(ABC):
@@ -237,16 +238,15 @@ class DatasetHz10000:
             setattr(self, key, value)
             for sub_key, sub_value in value.items():
                 setattr(self, sub_key, sub_value)
-        if split == "train":
-            self.data_idx = self.train_set_idx
-        else:
-            self.data_idx = self.val_set_idx
+        self.data_idx = list(range(1, 28))
 
         if self.get_item_strategy == "static_window":
             self.get_item_strategy = StaticWindowGetItemStrategy()
         elif self.get_item_strategy == "dynamic_window":
             self.get_item_strategy = DynamicWindowGetItemStrategy()
-        
+        # Create the directory if it doesn't exist
+        os.makedirs(self.cache_data_dir, exist_ok=True)
+
         self.all_data = {}
         self.all_labels = {}
         # Initialize the merged arrays
@@ -254,51 +254,85 @@ class DatasetHz10000:
         self.merged_labels = []
         self.avg_dt = 0
         for idx in self.data_idx:
+            if self.use_cache and self.cache_files_exist(idx, "left") and self.cache_files_exist(idx, "right"):
+                if self.split == "train":
+                    # Load cached training data
+                    left_eye_data = np.load(f"{self.cache_data_dir}/train/data/user{idx}_left.npy")
+                    left_labels = np.load(f"{self.cache_data_dir}/train/label/user{idx}_left.npy", allow_pickle=True)
+                    right_eye_data = np.load(f"{self.cache_data_dir}/train/data/user{idx}_right.npy")
+                    right_labels = np.load(f"{self.cache_data_dir}/train/label/user{idx}_right.npy", allow_pickle=True)
+                elif self.split == "val":
+                    # Load cached validation data
+                    left_eye_data = np.load(f"{self.cache_data_dir}/val/data/user{idx}_left.npy")
+                    left_labels = np.load(f"{self.cache_data_dir}/val/label/user{idx}_left.npy", allow_pickle=True)
+                    right_eye_data = np.load(f"{self.cache_data_dir}/val/data/user{idx}_right.npy")
+                    right_labels = np.load(f"{self.cache_data_dir}/val/label/user{idx}_right.npy", allow_pickle=True)
+                elif self.split == "test":
+                    # Load cached test data
+                    left_eye_data = np.load(f"{self.cache_data_dir}/test/data/user{idx}_left.npy")
+                    left_labels = np.load(f"{self.cache_data_dir}/test/label/user{idx}_left.npy", allow_pickle=True)
+                    right_eye_data = np.load(f"{self.cache_data_dir}/test/data/user{idx}_right.npy")
+                    right_labels = np.load(f"{self.cache_data_dir}/test/label/user{idx}_right.npy", allow_pickle=True)
+                else:
+                    raise ValueError("Invalid split type specified. Must be 'train', 'val', or 'test'.")
+                # Merge loaded data and labels
+                self.merged_data.extend([left_eye_data, right_eye_data])
+                self.merged_labels.extend([left_labels, right_labels])
+            else:
+                # Initialize dictionaries for each idx
+                self.all_data[idx] = {}
+                self.all_labels[idx] = {}            
+                # self.transform, self.target_transform = get_transforms(self.dataset_params, self.training_params)
+                left_frame_stack, left_event_stack, left_labels = self.collect_data(idx, 0)
+                right_frame_stack, right_event_stack, right_labels = self.collect_data(idx, 1)
+                
+                left_pols, left_xs, left_ys, left_ts = extract_event_components(left_event_stack)
+                right_pols, right_xs, right_ys, right_ts = extract_event_components(right_event_stack)
+                max_xs, min_xs = max(left_xs), min(left_xs)
+                max_ys, min_ys = max(left_ys), min(left_ys)
+                max_ts, min_ts = max(left_ts), min(left_ts)
+                print(f"User: {idx}")
+                print(f'Max x: {max_xs}, Min x: {min_xs}')
+                print(f'Max y: {max_ys}, Min y: {min_ys}')
+                print(f'Max t: {max_ts}, Min t: {min_ts}')
+                print(f'Max row label: {left_labels["row"].max()}, Max column label: {left_labels["col"].max()}')
 
-            # Initialize dictionaries for each idx
-            self.all_data[idx] = {}
-            self.all_labels[idx] = {}            
-            # self.transform, self.target_transform = get_transforms(self.dataset_params, self.training_params)
-            left_frame_stack, left_event_stack, left_labels = self.collect_data(idx, 0)
-            right_frame_stack, right_event_stack, right_labels = self.collect_data(idx, 1)
-            
-            left_pols, left_xs, left_ys, left_ts = extract_event_components(left_event_stack)
-            right_pols, right_xs, right_ys, right_ts = extract_event_components(right_event_stack)
-            max_xs, min_xs = max(left_xs), min(left_xs)
-            max_ys, min_ys = max(left_ys), min(left_ys)
-            max_ts, min_ts = max(left_ts), min(left_ts)
-            print(f"User: {idx}")
-            print(f'Max x: {max_xs}, Min x: {min_xs}')
-            print(f'Max y: {max_ys}, Min y: {min_ys}')
-            print(f'Max t: {max_ts}, Min t: {min_ts}')
-            print(f'Max row label: {left_labels["row"].max()}, Max column label: {left_labels["col"].max()}')
+                left_eye_data = make_structured_array(left_ts, left_xs, left_ys, left_pols, dtype=events_struct)
+                right_eye_data = make_structured_array(right_ts, right_xs, right_ys, right_pols, dtype=events_struct)
+                # normalize
+                left_eye_data = self.input_transform(left_eye_data)
+                right_eye_data = self.input_transform(right_eye_data)
 
-            left_eye_data = make_structured_array(left_ts, left_xs, left_ys, left_pols, dtype=events_struct)
-            right_eye_data = make_structured_array(right_ts, right_xs, right_ys, right_pols, dtype=events_struct)
-            # normalize
-            left_eye_data = self.input_transform(left_eye_data)
-            right_eye_data = self.input_transform(right_eye_data)
+                left_eye_data, left_labels, fixed_window_dt = self.get_item_strategy.get_item(left_eye_data, left_labels, self, self.tonic_transforms)
+                right_eye_data, right_labels, fixed_window_dt = self.get_item_strategy.get_item(right_eye_data, right_labels, self, self.tonic_transforms)
 
-            left_eye_data, left_labels, fixed_window_dt = self.get_item_strategy.get_item(left_eye_data, left_labels, self, self.tonic_transforms)
-            right_eye_data, right_labels, fixed_window_dt = self.get_item_strategy.get_item(right_eye_data, right_labels, self, self.tonic_transforms)
+                left_labels = self.target_transform(left_labels)
+                right_labels = self.target_transform(right_labels)
 
-            left_labels = self.target_transform(left_labels)
-            right_labels = self.target_transform(right_labels)
+                left_train_data, left_train_label, left_val_data, left_val_label, left_test_data, left_test_label = self.split_and_save(left_eye_data, left_labels, self.split_ratio, 42, "left", idx)
+                right_train_data, right_train_label, right_val_data, right_val_label, right_test_data, right_test_label = self.split_and_save(right_eye_data, right_labels, self.split_ratio, 42, "right", idx)
 
-            # np.save(f"cache/user{idx}.npy")
+                self.all_data[idx]["left_data"] = left_eye_data
+                self.all_labels[idx]["left_label"] = left_labels
+                self.all_data[idx]["right_data"] = right_eye_data
+                self.all_labels[idx]["right_label"] = right_labels
 
-            print(f'Max row label after normalization: {left_labels["row"].max()}, Max column label after normalization: {left_labels["col"].max()}')
-            print(f'Min row label after normalization: {left_labels["row"].min()}, Min column label after normalization: {left_labels["col"].min()}')
+                if self.split == "train":
+                    self.merged_data.append(left_train_data)
+                    self.merged_data.append(right_train_data)
+                    self.merged_labels.append(left_train_label)
+                    self.merged_labels.append(right_train_label)
+                elif self.split == "val":
+                    self.merged_data.append(left_val_data)
+                    self.merged_data.append(right_val_data)
+                    self.merged_labels.append(left_val_label)
+                    self.merged_labels.append(right_val_label)
+                elif self.split == "test":
+                    self.merged_data.append(left_test_data)
+                    self.merged_data.append(right_test_data)
+                    self.merged_labels.append(left_test_label)
+                    self.merged_labels.append(right_test_label)
 
-            self.all_data[idx]["left_data"] = left_eye_data
-            self.all_labels[idx]["left_label"] = left_labels
-            self.all_data[idx]["right_data"] = right_eye_data
-            self.all_labels[idx]["right_label"] = right_labels
-            self.merged_data.append(left_eye_data)
-            self.merged_data.append(right_eye_data)
-            self.merged_labels.append(left_labels)
-            self.merged_labels.append(right_labels)
-            
     def __len__(self):
         return len(self.merged_labels)
 
@@ -308,8 +342,46 @@ class DatasetHz10000:
     def __getitem__(self, index):
         data = self.merged_data[index]
         label = self.merged_labels[index]
+        data = torch.tensor(data)
+        label = torch.tensor(label)
         return data, label
     
+    def split_and_save(self, data, label, ratio, seed, eye, user_idx):
+        train_data, temp_data, train_label, temp_label = train_test_split(data, label, test_size=1-ratio, random_state=seed)
+        val_data, test_data, val_label, test_label = train_test_split(temp_data, temp_label, test_size=0.5, random_state=seed)
+        
+        
+        os.makedirs(f"{self.cache_data_dir}/train/data", exist_ok=True)
+        os.makedirs(f"{self.cache_data_dir}/train/label", exist_ok=True)
+
+        os.makedirs(f"{self.cache_data_dir}/val/data", exist_ok=True)
+        os.makedirs(f"{self.cache_data_dir}/val/label", exist_ok=True)
+
+        os.makedirs(f"{self.cache_data_dir}/test/data", exist_ok=True)
+        os.makedirs(f"{self.cache_data_dir}/test/label", exist_ok=True)
+
+        np.save(f"{self.cache_data_dir}/train/data/user{user_idx}_{eye}.npy", train_data)
+        np.save(f"{self.cache_data_dir}/train/label/user{user_idx}_{eye}.npy", train_label)
+
+        np.save(f"{self.cache_data_dir}/val/data/user{user_idx}_{eye}.npy", val_data)
+        np.save(f"{self.cache_data_dir}/val/label/user{user_idx}_{eye}.npy", val_label)
+
+        np.save(f"{self.cache_data_dir}/test/data/user{user_idx}_{eye}.npy", test_data)
+        np.save(f"{self.cache_data_dir}/test/label/user{user_idx}_{eye}.npy", test_label)
+
+        return train_data, train_label, val_data, val_label, test_data, test_label
+    def cache_files_exist(self, user_idx, eye):
+        """Check if all cache files for a given user and eye exist."""
+        required_files = [
+            f"{self.cache_data_dir}/train/data/user{user_idx}_{eye}.npy",
+            f"{self.cache_data_dir}/train/label/user{user_idx}_{eye}.npy",
+            f"{self.cache_data_dir}/val/data/user{user_idx}_{eye}.npy",
+            f"{self.cache_data_dir}/val/label/user{user_idx}_{eye}.npy",
+            f"{self.cache_data_dir}/test/data/user{user_idx}_{eye}.npy",
+            f"{self.cache_data_dir}/test/label/user{user_idx}_{eye}.npy"
+        ]
+        return all(os.path.exists(file) for file in required_files)
+
     def find_first_n_unique_pairs(self, events, N):
         seen_pairs = set()
         result = []
@@ -329,32 +401,24 @@ class DatasetHz10000:
 
         return np.array(result)
     
-
-
     def load_static_window(self, data, labels):
+        # label start and last
+        tab_start, tab_last = labels.iloc[0], labels.iloc[-1]
+        # start_label = (int(tab_start.row.item()), int(tab_start.col.item()))
+        # end_label = (int(tab_last.row.item()), int(tab_last.col.item()))
+        idx = find_closest_index(labels, [0, 0], tab_start["timestamp"], return_last=False)
+        start_time = labels["timestamp"].iloc[idx]   
+        end_time = start_time + self.fixed_window_dt * self.num_bins
 
         # append multiple data slices
         batch_data = []
         batch_label = []
-        #print(labels.columns.tolist())
-        #['index', 'row', 'col', 'stimulus_type', 'timestamp']
 
-        for idx in range(len(labels)):
-            
-            timestamp = labels.iloc[idx]['timestamp']
-            print(timestamp)
-            if idx != 0:
-                start_time = timestamp - self.fixed_window_dt * self.num_bins / 512
-            else:
-                start_time = timestamp
+        while(end_time < tab_last["timestamp"]):
 
-            if idx != len(labels) - 1:
-                end_time = timestamp + self.fixed_window_dt * self.num_bins / 512
-            else:
-                end_time = timestamp
-            #print(timestamp, start_time, end_time)
-            evs_t = data["t"][(data["t"] >= start_time) & (data["t"] <= end_time)]
-            evs_t = evs_t[:10]
+            # start_label = (int(tab_start.row.item()), int(tab_start.col.item()))
+            # end_label = (int(tab_last.row.item()), int(tab_last.col.item()))
+            evs_t = data["t"][data["t"] >= start_time]
             evs_p, evs_xy = data["p"][-evs_t.shape[0] :], data["xy"][-evs_t.shape[0] :, :]
 
             # frame
@@ -368,22 +432,16 @@ class DatasetHz10000:
             # get intermediary labels based on num of bins
             fixed_timestamps = np.linspace(start_time, end_time, self.num_bins)
             x_axis, y_axis = [], []
-            
             for i, fixed_tmp in enumerate(fixed_timestamps):
-                x = None
-                y = None
+
                 # label
                 idx = np.searchsorted(labels["timestamp"], fixed_tmp, side="left")
-                row = int(labels.iloc[idx]["row"])
-                col = int(labels.iloc[idx]["col"])
-                if row == 0 and col == 0:
-                    break
-                # x_axis.append(
-                #     row
-                # )
-                # y_axis.append(
-                #     col
-                # )
+                # row = int(labels.iloc[idx]["row"])
+                # col = int(labels.iloc[idx]["col"])
+                # if row == 0 and col == 0:
+                #     skip = True
+                #     break
+
                 # Weighted interpolation
                 t0 = labels["timestamp"].iloc[idx - 1]
                 t1 = labels["timestamp"].iloc[idx]
@@ -406,8 +464,8 @@ class DatasetHz10000:
 
                 # slice
                 t = evs_t[start_idx:][evs_t[start_idx:] <= fixed_tmp]
-                if t.shape[0] == 0:
-                    continue
+                # if t.shape[0] == 0:
+                #     continue
                 xy = evs_xy[start_idx : start_idx + t.shape[0], :]
                 p = evs_p[start_idx : start_idx + t.shape[0]]
 
@@ -426,20 +484,25 @@ class DatasetHz10000:
                 data_temp[i] = data_temp[i].clip(0, 1)  # no double events
 
                 # move pointers
-                start_idx += t.shape[0]
-                # frames = torch.rot90(torch.tensor(data_temp), k=2, dims=(2, 3))
-                # frames = frames.permute(0, 1, 3, 2) 
-                # frames = torch.tensor(data_temp)
-                for (x, y) in zip(x_axis, y_axis):
-                    print(x, y)
-        
-                batch_data.append(data_temp)
-                batch_label.append(np.column_stack((x, y)))
-                
+                start_idx += t.shape[0]  
+            
+            batch_data.append(data_temp)
+            batch_label.append(np.column_stack((x_axis, y_axis)))
+            idx = find_closest_index(labels, [x_axis[-1], y_axis[-1]], end_time, return_last=False)
+            start_time = labels["timestamp"].iloc[idx]   
+            end_time = start_time + self.fixed_window_dt * self.num_bins
+            # if skip == False:             
+
+            # else:
+            #     # idx = find_closest_index(labels, [0, 0], end_time, return_last=False)
+            #     # start_time = labels["timestamp"].iloc[idx]   
+            #     # end_time = start_time + self.fixed_window_dt * self.num_bins
+            #     #                 idx = np.searchsorted(labels["timestamp"], fixed_tmp, side="left")
+            #     pass
         # batch_data = torch.stack(batch_data)
         # batch_label = torch.stack(batch_label)
-
-        return batch_data, batch_label
+            break
+        return np.vstack(batch_data).astype(np.float32), np.vstack(batch_label).astype(np.float32)
 
     # def load_static_window(self, data, labels):
         # tab_start, tab_last = labels.iloc[0], labels.iloc[-1]
@@ -653,7 +716,7 @@ class DatasetHz10000:
         print("Normalized label maximum value: ", input["y"].max())
         return input
     
-    def target_transform(self, target: List):
+    def target_transform(self, target):
 
 
         """
@@ -671,8 +734,7 @@ class DatasetHz10000:
         #     raise ValueError("The list of arrays is empty.")
         
         # Normalize each array
-        for idx, array in enumerate(target):
-            target[idx][0] = array[0] / self.stimulus_screen_size[0]
-            target[idx][1] = array[1] / self.stimulus_screen_size[1]
+        target[:, 0] = target[:, 0] / self.stimulus_screen_size[0]
+        target[:, 1] = target[:, 1] / self.stimulus_screen_size[1]
 
         return target

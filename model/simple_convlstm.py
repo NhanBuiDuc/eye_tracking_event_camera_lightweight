@@ -210,10 +210,15 @@ class SimpleConvLSTM(nn.Module):
 
         self.convlstm1 = ConvLSTM(input_dim=input_dim, hidden_dim=8, kernel_size=(3, 3), num_layers=1, batch_first=True)
         self.bn1 = nn.BatchNorm3d(8)
-        self.pool1 = nn.MaxPool3d(kernel_size=(1, 2, 2))
-        self.fc1 = nn.Linear(8192, 512)
+        self.pool1 = nn.MaxPool3d(kernel_size=(1, 3, 3))
+
+        self.convlstm2 = ConvLSTM(input_dim=8, hidden_dim=16, kernel_size=(3, 3), num_layers=1, batch_first=True)
+        self.bn2 = nn.BatchNorm3d(16)
+        self.pool2 = nn.MaxPool3d(kernel_size=(1, 3, 3))
+        
+        self.fc1 = nn.Linear(784, 100)
         self.drop = nn.Dropout(0.5)
-        self.fc2 = nn.Linear(512, 2)
+        self.fc2 = nn.Linear(100, 2)
         # get_summary(self)
 
     def forward(self, x):
@@ -222,6 +227,16 @@ class SimpleConvLSTM(nn.Module):
         x = self.bn1(x)
         x = F.relu(x)
         x = self.pool1(x)
+
+
+        x = x.permute(0, 2, 1, 3, 4)
+        x, _ = self.convlstm2(x)
+        x = x[0].permute(0, 2, 1, 3, 4)
+        x = self.bn2(x)
+        x = F.relu(x)
+        x = self.pool2(x)
+
+
         # Flatten and apply LSTM layer
         x_list=[]
         b, c, seq, h, w = x.size()

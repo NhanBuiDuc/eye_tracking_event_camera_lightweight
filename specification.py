@@ -4,6 +4,7 @@ from model.B_3ET import Baseline_3ET
 from fvcore.nn import FlopCountAnalysis
 import time
 import os
+from model.simple_convlstm import SimpleConvLSTM
 
 def get_device_info():
     if torch.cuda.is_available():
@@ -56,12 +57,15 @@ def model_analysis(model, input_size, batch_sizes, device):
     print(f"Device: {device_info}")
 
 # Define your model and input size here
-model = Baseline_3ET(
+model = SimpleConvLSTM(
     height=64,
     width=64,
     input_dim=2
 )
-input_size = (40, 2, 64, 64)  # Example input size
+file_name = f"model.pt"
+
+torch.save(model, file_name)
+input_size = (64, 2, 64, 64)  # Example input size
 batch_sizes = [1, 8, 16, 32, 64]  # List of batch sizes to test
 
-model_analysis(model, input_size, batch_sizes, device = "cpu")
+model_analysis(model, input_size, batch_sizes, device = "cuda")

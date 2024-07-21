@@ -332,21 +332,29 @@ class DatasetHz10000:
 
 
     def load_static_window(self, data, labels):
-        # label start and last
-        tab_start, tab_last = labels.iloc[0], labels.iloc[-1]
-        # start_label = (int(tab_start.row.item()), int(tab_start.col.item()))
-        # end_label = (int(tab_last.row.item()), int(tab_last.col.item()))
-        end_time = tab_start["timestamp"] + self.fixed_window_dt * self.num_bins
-        start_time = tab_start["timestamp"] # self.fixed_window_dt -> nano second
 
         # append multiple data slices
         batch_data = []
         batch_label = []
-        while(end_time < tab_last["timestamp"]):
+        #print(labels.columns.tolist())
+        #['index', 'row', 'col', 'stimulus_type', 'timestamp']
 
-            # start_label = (int(tab_start.row.item()), int(tab_start.col.item()))
-            # end_label = (int(tab_last.row.item()), int(tab_last.col.item()))
-            evs_t = data["t"][data["t"] >= start_time]
+        for idx in range(len(labels)):
+            
+            timestamp = labels.iloc[idx]['timestamp']
+            print(timestamp)
+            if idx != 0:
+                start_time = timestamp - self.fixed_window_dt * self.num_bins / 2
+            else:
+                start_time = timestamp
+
+            if idx != len(labels) - 1:
+                end_time = timestamp + self.fixed_window_dt * self.num_bins / 2
+            else:
+                end_time = timestamp
+            #print(timestamp, start_time, end_time)
+            evs_t = data["t"][(data["t"] >= start_time) & (data["t"] <= end_time)]
+            evs_t = evs_t[:10]
             evs_p, evs_xy = data["p"][-evs_t.shape[0] :], data["xy"][-evs_t.shape[0] :, :]
 
             # frame
@@ -422,20 +430,12 @@ class DatasetHz10000:
                 # frames = torch.rot90(torch.tensor(data_temp), k=2, dims=(2, 3))
                 # frames = frames.permute(0, 1, 3, 2) 
                 # frames = torch.tensor(data_temp)
-                x = np.array(x_axis)
-                y = np.array(y_axis)
+                for (x, y) in zip(x_axis, y_axis):
+                    print(x, y)
         
                 batch_data.append(data_temp)
                 batch_label.append(np.column_stack((x, y)))
-
-            if x is not None or y is not None: 
-                idx = find_closest_index(labels, [x[-1], y[-1]], end_time)
-                start_time = labels["timestamp"].iloc[idx]   
-                end_time = start_time + self.fixed_window_dt * self.num_bins
-            else:
-                idx = find_closest_index(labels, [0, 0], end_time)
-                start_time = labels["timestamp"].iloc[idx]   
-                end_time = start_time + self.fixed_window_dt * self.num_bins     
+                
         # batch_data = torch.stack(batch_data)
         # batch_label = torch.stack(batch_label)
 

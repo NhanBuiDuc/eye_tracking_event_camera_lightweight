@@ -283,10 +283,10 @@ class DatasetHz10000:
                         raise ValueError("Invalid split type specified. Must be 'train', 'val', or 'test'.")
                     
                     # Merge loaded data and labels
-                    left_eye_data = left_eye_data.reshape(-1, self.num_bins, self.input_channel, self.img_width, self.img_height)
-                    left_labels = left_labels.reshape(-1, self.num_bins, self.input_channel, self.img_width, self.img_height)
-                    right_eye_data = right_eye_data.reshape(-1, self.num_bins, self.input_channel, self.img_width, self.img_height)
-                    right_labels = right_labels.reshape(-1, self.num_bins, self.input_channel, self.img_width, self.img_height)
+                    left_eye_data = left_eye_data.reshape(left_eye_data.shape[0] / self.num_bins, self.num_bins, self.input_channel, self.img_width, self.img_height)
+                    left_labels = left_labels.reshape(left_labels.shape[0] / self.num_bins, self.num_bins, self.input_channel, self.img_width, self.img_height)
+                    right_eye_data = right_eye_data.reshape(right_eye_data.shape[0] / self.num_bins, self.num_bins, self.input_channel, self.img_width, self.img_height)
+                    right_labels = right_labels.reshape(right_labels.shape[0] / self.num_bins, self.num_bins, self.input_channel, self.img_width, self.img_height)
 
                     self.merged_data.extend([left_eye_data, right_eye_data])
                     self.merged_labels.extend([left_labels, right_labels])
@@ -321,10 +321,10 @@ class DatasetHz10000:
                     left_labels = self.target_transform(left_labels)
                     right_labels = self.target_transform(right_labels)
 
-                    left_eye_data = left_eye_data.reshape(-1, self.num_bins, 2, 64, 64)
-                    left_labels = left_labels.reshape(-1, self.num_bins, 2, 64, 64)
-                    right_eye_data = right_eye_data.reshape(-1, self.num_bins, 2, 64, 64)
-                    right_labels = right_labels.reshape(-1, self.num_bins, 2, 64, 64)
+                    left_eye_data = left_eye_data.reshape(left_eye_data.shape[0] / self.num_bins, self.num_bins, self.input_channel, self.img_width, self.img_height)
+                    left_labels = left_labels.reshape(left_labels.shape[0] / self.num_bins, self.num_bins, self.input_channel, self.img_width, self.img_height)
+                    right_eye_data = right_eye_data.reshape(right_eye_data.shape[0] / self.num_bins, self.num_bins, self.input_channel, self.img_width, self.img_height)
+                    right_labels = right_labels.reshape(right_labels.shape[0] / self.num_bins, self.num_bins, self.input_channel, self.img_width, self.img_height)
 
                     left_train_data, left_train_label, left_val_data, left_val_label, left_test_data, left_test_label = self.split_and_save(left_eye_data, left_labels, self.split_ratio, 42, "left", idx)
                     right_train_data, right_train_label, right_val_data, right_val_label, right_test_data, right_test_label = self.split_and_save(right_eye_data, right_labels, self.split_ratio, 42, "right", idx)

@@ -519,7 +519,7 @@ class DatasetHz10000:
 
             # frame
             data_temp = np.zeros(
-                (self.num_bins, self.input_channel, self.img_width, self.img_height)
+                (1, self.num_bins, self.input_channel, self.img_width, self.img_height)
             )
 
             # indexes
@@ -628,7 +628,7 @@ class DatasetHz10000:
         # batch_data = torch.stack(batch_data)
         # batch_label = torch.stack(batch_label)
             # break
-        return np.vstack(batch_data).astype(np.float32), np.vstack(batch_label).astype(np.float32)
+        return np.array(batch_data).astype(np.float32), np.array(batch_label).astype(np.float32)
 
     # def load_static_window(self, data, labels):
         # tab_start, tab_last = labels.iloc[0], labels.iloc[-1]

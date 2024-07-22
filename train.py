@@ -18,7 +18,7 @@ from metrics.mean_squared_error import MeanSquaredError
 from loss.loss_base import Loss, LossSequence
 from loss.YoloLoss import YoloLoss
 from model.simple_convlstm import SimpleConvLSTM
-
+from data.dataset.hz_10000 import DatasetHz10000
 
 def setup_ddp(rank, world_size):
     # Set necessary environment variables
@@ -144,9 +144,9 @@ def distributed_job(rank, world_size):
 
     criterions_sequence = create_losses_sequence(losses, dataset_params, training_params)
     metrics_sequence = create_metrics_sequence(metrics)
-    train_dataset = Ini30Dataset(split="train", config_params=config_params)  # Example dataset
-    val_dataset = Ini30Dataset(split="val", config_params=config_params)  # Example dataset
-    test_dataset = Ini30Dataset(split="test", config_params=config_params)  # Example dataset
+    train_dataset = DatasetHz10000(split="train", config_params=config_params)  # Example dataset
+    val_dataset = DatasetHz10000(split="val", config_params=config_params)  # Example dataset
+    test_dataset = DatasetHz10000(split="test", config_params=config_params)  # Example dataset
     if short_train:
         train_dataset = torch.utils.data.Subset(train_dataset, range(100))
         val_dataset = torch.utils.data.Subset(val_dataset, range(100))

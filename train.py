@@ -153,7 +153,6 @@ def distributed_job(rank, world_size):
         test_dataset = torch.utils.data.Subset(val_dataset, range(100))
     # test_dataset = Ini30Dataset(split="test", config_json_path=config_params)  # Example dataset
     dataloader_list = []
-    optimizer = torch.optim.SGD(model.parameters(), lr=1e-3)
 
     train_dataloader = prepare_dataloader(train_dataset, batch_size)
     val_dataloader = prepare_dataloader(val_dataset, batch_size)

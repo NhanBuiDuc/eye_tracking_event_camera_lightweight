@@ -256,99 +256,90 @@ class DatasetHz10000:
         self.merged_data = []
         self.merged_labels = []
         self.avg_dt = 0
-        if self.use_cache == False:
-            self.parallel_process_data()
-        else:
-            for idx in self.data_idx:
-                if self.use_cache and self.cache_files_exist(idx, "left") and self.cache_files_exist(idx, "right"):
-                    if self.split == "train":
-                        # Load cached training data
-                        left_eye_data = np.load(f"{self.cache_data_dir}/train/data/user{idx}_left.npy")
-                        left_labels = np.load(f"{self.cache_data_dir}/train/label/user{idx}_left.npy", allow_pickle=True)
-                        right_eye_data = np.load(f"{self.cache_data_dir}/train/data/user{idx}_right.npy")
-                        right_labels = np.load(f"{self.cache_data_dir}/train/label/user{idx}_right.npy", allow_pickle=True)
-                    elif self.split == "val":
-                        # Load cached validation data
-                        left_eye_data = np.load(f"{self.cache_data_dir}/val/data/user{idx}_left.npy")
-                        left_labels = np.load(f"{self.cache_data_dir}/val/label/user{idx}_left.npy", allow_pickle=True)
-                        right_eye_data = np.load(f"{self.cache_data_dir}/val/data/user{idx}_right.npy")
-                        right_labels = np.load(f"{self.cache_data_dir}/val/label/user{idx}_right.npy", allow_pickle=True)
-                    elif self.split == "test":
-                        # Load cached test data
-                        left_eye_data = np.load(f"{self.cache_data_dir}/test/data/user{idx}_left.npy")
-                        left_labels = np.load(f"{self.cache_data_dir}/test/label/user{idx}_left.npy", allow_pickle=True)
-                        right_eye_data = np.load(f"{self.cache_data_dir}/test/data/user{idx}_right.npy")
-                        right_labels = np.load(f"{self.cache_data_dir}/test/label/user{idx}_right.npy", allow_pickle=True)
-                    else:
-                        raise ValueError("Invalid split type specified. Must be 'train', 'val', or 'test'.")
+        for idx in self.data_idx:
+            if self.split == "train":
+                # Load cached training data
+                left_eye_data = np.load(f"{self.cache_data_dir}/train/data/user{idx}_left.npy")
+                left_labels = np.load(f"{self.cache_data_dir}/train/label/user{idx}_left.npy", allow_pickle=True)
+                right_eye_data = np.load(f"{self.cache_data_dir}/train/data/user{idx}_right.npy")
+                right_labels = np.load(f"{self.cache_data_dir}/train/label/user{idx}_right.npy", allow_pickle=True)
+            elif self.split == "val":
+                # Load cached validation data
+                left_eye_data = np.load(f"{self.cache_data_dir}/val/data/user{idx}_left.npy")
+                left_labels = np.load(f"{self.cache_data_dir}/val/label/user{idx}_left.npy", allow_pickle=True)
+                right_eye_data = np.load(f"{self.cache_data_dir}/val/data/user{idx}_right.npy")
+                right_labels = np.load(f"{self.cache_data_dir}/val/label/user{idx}_right.npy", allow_pickle=True)
+            elif self.split == "test":
+                # Load cached test data
+                left_eye_data = np.load(f"{self.cache_data_dir}/test/data/user{idx}_left.npy")
+                left_labels = np.load(f"{self.cache_data_dir}/test/label/user{idx}_left.npy", allow_pickle=True)
+                right_eye_data = np.load(f"{self.cache_data_dir}/test/data/user{idx}_right.npy")
+                right_labels = np.load(f"{self.cache_data_dir}/test/label/user{idx}_right.npy", allow_pickle=True)
+            else:
+                raise ValueError("Invalid split type specified. Must be 'train', 'val', or 'test'.")
+            self.merged_data.extend([left_eye_data, right_eye_data])
+            self.merged_labels.extend([left_labels, right_labels])        
+        # if self.use_cache == False:
+        #     self.parallel_process_data()
+        # else:
+        #             # Initialize dictionaries for each idx
+        #             self.all_data[idx] = {}
+        #             self.all_labels[idx] = {}            
+        #             # self.transform, self.target_transform = get_transforms(self.dataset_params, self.training_params)
+        #             left_frame_stack, left_event_stack, left_labels = self.collect_data(idx, 0)
+        #             right_frame_stack, right_event_stack, right_labels = self.collect_data(idx, 1)
                     
-                    # # Merge loaded data and labels
-                    # left_eye_data = left_eye_data.reshape(left_eye_data.shape[0] / self.num_bins, self.num_bins, self.input_channel, self.img_width, self.img_height)
-                    # left_labels = left_labels.reshape(left_labels.shape[0] / self.num_bins, self.num_bins, self.input_channel, self.img_width, self.img_height)
-                    # right_eye_data = right_eye_data.reshape(right_eye_data.shape[0] / self.num_bins, self.num_bins, self.input_channel, self.img_width, self.img_height)
-                    # right_labels = right_labels.reshape(right_labels.shape[0] / self.num_bins, self.num_bins, self.input_channel, self.img_width, self.img_height)
+        #             left_pols, left_xs, left_ys, left_ts = extract_event_components(left_event_stack)
+        #             right_pols, right_xs, right_ys, right_ts = extract_event_components(right_event_stack)
+        #             max_xs, min_xs = max(left_xs), min(left_xs)
+        #             max_ys, min_ys = max(left_ys), min(left_ys)
+        #             max_ts, min_ts = max(left_ts), min(left_ts)
+        #             print(f"User: {idx}")
+        #             print(f'Max x: {max_xs}, Min x: {min_xs}')
+        #             print(f'Max y: {max_ys}, Min y: {min_ys}')
+        #             print(f'Max t: {max_ts}, Min t: {min_ts}')
+        #             print(f'Max row label: {left_labels["row"].max()}, Max column label: {left_labels["col"].max()}')
 
-                    self.merged_data.extend([left_eye_data, right_eye_data])
-                    self.merged_labels.extend([left_labels, right_labels])
-                else:
-                    # Initialize dictionaries for each idx
-                    self.all_data[idx] = {}
-                    self.all_labels[idx] = {}            
-                    # self.transform, self.target_transform = get_transforms(self.dataset_params, self.training_params)
-                    left_frame_stack, left_event_stack, left_labels = self.collect_data(idx, 0)
-                    right_frame_stack, right_event_stack, right_labels = self.collect_data(idx, 1)
-                    
-                    left_pols, left_xs, left_ys, left_ts = extract_event_components(left_event_stack)
-                    right_pols, right_xs, right_ys, right_ts = extract_event_components(right_event_stack)
-                    max_xs, min_xs = max(left_xs), min(left_xs)
-                    max_ys, min_ys = max(left_ys), min(left_ys)
-                    max_ts, min_ts = max(left_ts), min(left_ts)
-                    print(f"User: {idx}")
-                    print(f'Max x: {max_xs}, Min x: {min_xs}')
-                    print(f'Max y: {max_ys}, Min y: {min_ys}')
-                    print(f'Max t: {max_ts}, Min t: {min_ts}')
-                    print(f'Max row label: {left_labels["row"].max()}, Max column label: {left_labels["col"].max()}')
+        #             left_eye_data = make_structured_array(left_ts, left_xs, left_ys, left_pols, dtype=events_struct)
+        #             right_eye_data = make_structured_array(right_ts, right_xs, right_ys, right_pols, dtype=events_struct)
+        #             # normalize
+        #             left_eye_data = self.input_transform(left_eye_data)
+        #             right_eye_data = self.input_transform(right_eye_data)
 
-                    left_eye_data = make_structured_array(left_ts, left_xs, left_ys, left_pols, dtype=events_struct)
-                    right_eye_data = make_structured_array(right_ts, right_xs, right_ys, right_pols, dtype=events_struct)
-                    # normalize
-                    left_eye_data = self.input_transform(left_eye_data)
-                    right_eye_data = self.input_transform(right_eye_data)
+        #             left_eye_data, left_labels, fixed_window_dt = self.get_item_strategy.get_item(left_eye_data, left_labels, self, self.tonic_transforms)
+        #             right_eye_data, right_labels, fixed_window_dt = self.get_item_strategy.get_item(right_eye_data, right_labels, self, self.tonic_transforms)
 
-                    left_eye_data, left_labels, fixed_window_dt = self.get_item_strategy.get_item(left_eye_data, left_labels, self, self.tonic_transforms)
-                    right_eye_data, right_labels, fixed_window_dt = self.get_item_strategy.get_item(right_eye_data, right_labels, self, self.tonic_transforms)
+        #             left_labels = self.target_transform(left_labels)
+        #             right_labels = self.target_transform(right_labels)
 
-                    left_labels = self.target_transform(left_labels)
-                    right_labels = self.target_transform(right_labels)
+        #             # left_eye_data = left_eye_data.reshape(left_eye_data.shape[0] / self.num_bins, self.num_bins, self.input_channel, self.img_width, self.img_height)
+        #             # left_labels = left_labels.reshape(left_labels.shape[0] / self.num_bins, self.num_bins, self.input_channel, self.img_width, self.img_height)
+        #             # right_eye_data = right_eye_data.reshape(right_eye_data.shape[0] / self.num_bins, self.num_bins, self.input_channel, self.img_width, self.img_height)
+        #             # right_labels = right_labels.reshape(right_labels.shape[0] / self.num_bins, self.num_bins, self.input_channel, self.img_width, self.img_height)
 
-                    # left_eye_data = left_eye_data.reshape(left_eye_data.shape[0] / self.num_bins, self.num_bins, self.input_channel, self.img_width, self.img_height)
-                    # left_labels = left_labels.reshape(left_labels.shape[0] / self.num_bins, self.num_bins, self.input_channel, self.img_width, self.img_height)
-                    # right_eye_data = right_eye_data.reshape(right_eye_data.shape[0] / self.num_bins, self.num_bins, self.input_channel, self.img_width, self.img_height)
-                    # right_labels = right_labels.reshape(right_labels.shape[0] / self.num_bins, self.num_bins, self.input_channel, self.img_width, self.img_height)
+        #             left_train_data, left_train_label, left_val_data, left_val_label, left_test_data, left_test_label = self.split_and_save(left_eye_data, left_labels, self.split_ratio, 42, "left", idx)
+        #             right_train_data, right_train_label, right_val_data, right_val_label, right_test_data, right_test_label = self.split_and_save(right_eye_data, right_labels, self.split_ratio, 42, "right", idx)
 
-                    left_train_data, left_train_label, left_val_data, left_val_label, left_test_data, left_test_label = self.split_and_save(left_eye_data, left_labels, self.split_ratio, 42, "left", idx)
-                    right_train_data, right_train_label, right_val_data, right_val_label, right_test_data, right_test_label = self.split_and_save(right_eye_data, right_labels, self.split_ratio, 42, "right", idx)
+        #             self.all_data[idx]["left_data"] = left_eye_data
+        #             self.all_labels[idx]["left_label"] = left_labels
+        #             self.all_data[idx]["right_data"] = right_eye_data
+        #             self.all_labels[idx]["right_label"] = right_labels
 
-                    self.all_data[idx]["left_data"] = left_eye_data
-                    self.all_labels[idx]["left_label"] = left_labels
-                    self.all_data[idx]["right_data"] = right_eye_data
-                    self.all_labels[idx]["right_label"] = right_labels
-
-                    if self.split == "train":
-                        self.merged_data.append(left_train_data)
-                        self.merged_data.append(right_train_data)
-                        self.merged_labels.append(left_train_label)
-                        self.merged_labels.append(right_train_label)
-                    elif self.split == "val":
-                        self.merged_data.append(left_val_data)
-                        self.merged_data.append(right_val_data)
-                        self.merged_labels.append(left_val_label)
-                        self.merged_labels.append(right_val_label)
-                    elif self.split == "test":
-                        self.merged_data.append(left_test_data)
-                        self.merged_data.append(right_test_data)
-                        self.merged_labels.append(left_test_label)
-                        self.merged_labels.append(right_test_label)
+        #             if self.split == "train":
+        #                 self.merged_data.append(left_train_data)
+        #                 self.merged_data.append(right_train_data)
+        #                 self.merged_labels.append(left_train_label)
+        #                 self.merged_labels.append(right_train_label)
+        #             elif self.split == "val":
+        #                 self.merged_data.append(left_val_data)
+        #                 self.merged_data.append(right_val_data)
+        #                 self.merged_labels.append(left_val_label)
+        #                 self.merged_labels.append(right_val_label)
+        #             elif self.split == "test":
+        #                 self.merged_data.append(left_test_data)
+        #                 self.merged_data.append(right_test_data)
+        #                 self.merged_labels.append(left_test_label)
+        #                 self.merged_labels.append(right_test_label)
 
     def __len__(self):
         return len(self.merged_labels)

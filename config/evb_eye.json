@@ -21,7 +21,7 @@
     },
     "training_params": {
         "device": "cuda",
-        "metrics": ["mean_squared_error"],
+        "metrics": ["angular_error"],
         "losses": ["mean_squared_error"],
         "lr_model": 1e-4,
         "num_epochs": 200,

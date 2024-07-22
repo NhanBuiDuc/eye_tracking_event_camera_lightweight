@@ -491,7 +491,7 @@ class DatasetHz10000:
                 # Equal head and tail
 
                 if switch == 0:
-                    idx = find_closest_index(labels, [x_axis[-1], y_axis[-1]], return_last=False) - 1
+                    idx = find_closest_index(labels, [x_axis[-1], y_axis[-1]], return_last=False) - 2
                     start_time = labels["timestamp"].iloc[idx]   
                     end_time = start_time + self.fixed_window_dt * self.num_bins
                     switch = 1
@@ -509,12 +509,12 @@ class DatasetHz10000:
                     start_time = labels["timestamp"].iloc[idx]   
                     end_time = start_time + self.fixed_window_dt * self.num_bins
                     switch = 3
-                # big head and small tail
-                elif switch == 3:
-                    idx = idx + 1
-                    start_time = labels["timestamp"].iloc[idx]   
-                    end_time = start_time + self.fixed_window_dt * self.num_bins
-                    switch = 0
+                # # big head and small tail
+                # elif switch == 3:
+                #     idx = idx + 2
+                #     start_time = labels["timestamp"].iloc[idx]   
+                #     end_time = start_time + self.fixed_window_dt * self.num_bins
+                #     switch = 0
 
             except:
                 start_time = end_time

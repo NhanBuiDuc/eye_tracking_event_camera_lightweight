@@ -257,30 +257,38 @@ class DatasetHz10000:
         self.merged_labels = []
         self.avg_dt = 0
 
+    # def load_data(self):
+    #     for idx in self.data_idx:
+    #         if self.split == "train":
+    #             # Load cached training data
+    #             left_eye_data = np.load(f"{self.cache_data_dir}/train/data/user{idx}_left.npy")
+    #             left_labels = np.load(f"{self.cache_data_dir}/train/label/user{idx}_left.npy", allow_pickle=True)
+    #             right_eye_data = np.load(f"{self.cache_data_dir}/train/data/user{idx}_right.npy")
+    #             right_labels = np.load(f"{self.cache_data_dir}/train/label/user{idx}_right.npy", allow_pickle=True)
+    #         elif self.split == "val":
+    #             # Load cached validation data
+    #             left_eye_data = np.load(f"{self.cache_data_dir}/val/data/user{idx}_left.npy")
+    #             left_labels = np.load(f"{self.cache_data_dir}/val/label/user{idx}_left.npy", allow_pickle=True)
+    #             right_eye_data = np.load(f"{self.cache_data_dir}/val/data/user{idx}_right.npy")
+    #             right_labels = np.load(f"{self.cache_data_dir}/val/label/user{idx}_right.npy", allow_pickle=True)
+    #         elif self.split == "test":
+    #             # Load cached test data
+    #             left_eye_data = np.load(f"{self.cache_data_dir}/test/data/user{idx}_left.npy")
+    #             left_labels = np.load(f"{self.cache_data_dir}/test/label/user{idx}_left.npy", allow_pickle=True)
+    #             right_eye_data = np.load(f"{self.cache_data_dir}/test/data/user{idx}_right.npy")
+    #             right_labels = np.load(f"{self.cache_data_dir}/test/label/user{idx}_right.npy", allow_pickle=True)
+    #         else:
+    #             raise ValueError("Invalid split type specified. Must be 'train', 'val', or 'test'.")
+    #         self.merged_data.extend([left_eye_data, right_eye_data])
+    #         self.merged_labels.extend([left_labels, right_labels])
+
+
     def load_data(self):
-        for idx in self.data_idx:
-            if self.split == "train":
-                # Load cached training data
-                left_eye_data = np.load(f"{self.cache_data_dir}/train/data/user{idx}_left.npy")
-                left_labels = np.load(f"{self.cache_data_dir}/train/label/user{idx}_left.npy", allow_pickle=True)
-                right_eye_data = np.load(f"{self.cache_data_dir}/train/data/user{idx}_right.npy")
-                right_labels = np.load(f"{self.cache_data_dir}/train/label/user{idx}_right.npy", allow_pickle=True)
-            elif self.split == "val":
-                # Load cached validation data
-                left_eye_data = np.load(f"{self.cache_data_dir}/val/data/user{idx}_left.npy")
-                left_labels = np.load(f"{self.cache_data_dir}/val/label/user{idx}_left.npy", allow_pickle=True)
-                right_eye_data = np.load(f"{self.cache_data_dir}/val/data/user{idx}_right.npy")
-                right_labels = np.load(f"{self.cache_data_dir}/val/label/user{idx}_right.npy", allow_pickle=True)
-            elif self.split == "test":
-                # Load cached test data
-                left_eye_data = np.load(f"{self.cache_data_dir}/test/data/user{idx}_left.npy")
-                left_labels = np.load(f"{self.cache_data_dir}/test/label/user{idx}_left.npy", allow_pickle=True)
-                right_eye_data = np.load(f"{self.cache_data_dir}/test/data/user{idx}_right.npy")
-                right_labels = np.load(f"{self.cache_data_dir}/test/label/user{idx}_right.npy", allow_pickle=True)
-            else:
-                raise ValueError("Invalid split type specified. Must be 'train', 'val', or 'test'.")
-            self.merged_data.extend([left_eye_data, right_eye_data])
-            self.merged_labels.extend([left_labels, right_labels])
+        data_path = f"{self.cache_data_dir}/data/{self.split}.npy"
+        label_path = f"{self.cache_data_dir}/label/{self.split}.npy"
+
+        self.merged_data = np.load(data_path)
+        self.merged_labels = np.load(label_path)
 
         # if self.use_cache == False:
         #     self.parallel_process_data()
@@ -388,28 +396,41 @@ class DatasetHz10000:
         left_labels = self.target_transform(left_labels)
         right_labels = self.target_transform(right_labels)
 
-        left_train_data, left_train_label, left_val_data, left_val_label, left_test_data, left_test_label = self.split_and_save(left_eye_data, left_labels, self.split_ratio, 42, "left", idx)
-        right_train_data, right_train_label, right_val_data, right_val_label, right_test_data, right_test_label = self.split_and_save(right_eye_data, right_labels, self.split_ratio, 42, "right", idx)
+        left_train_data, left_train_label, left_val_data, left_val_label, left_test_data, left_test_label = self.split(left_eye_data, left_labels, self.split_ratio, 42, "left", idx)
+        right_train_data, right_train_label, right_val_data, right_val_label, right_test_data, right_test_label = self.split(right_eye_data, right_labels, self.split_ratio, 42, "right", idx)
 
-        self.all_data[idx]["left_data"] = left_eye_data
-        self.all_labels[idx]["left_label"] = left_labels
-        self.all_data[idx]["right_data"] = right_eye_data
-        self.all_labels[idx]["right_label"] = right_labels
+        # result_queue.put([(left_train_data, left_train_label), (right_train_data, right_train_label)])
+        # result_queue.put([(left_val_data, left_val_label), (right_val_data, right_val_label)])
+        # self.all_data[idx]["left_data"] = left_eye_data
+        # self.all_labels[idx]["left_label"] = left_labels
+        # self.all_data[idx]["right_data"] = right_eye_data
+        # self.all_labels[idx]["right_label"] = right_labels
 
-        if self.split == "train":
-            result_queue.put([(left_train_data, left_train_label), (right_train_data, right_train_label)])
-        elif self.split == "val":
-            result_queue.put([(left_val_data, left_val_label), (right_val_data, right_val_label)])
-        elif self.split == "test":
-            result_queue.put([(left_test_data, left_test_label), (right_test_data, right_test_label)])
-        # except Exception as e:
-        #     result_queue.put(e)
+        result_queue.put((left_train_data, left_train_label, left_val_data, left_val_label, left_test_data, left_test_label, 
+                            right_train_data, right_train_label, right_val_data, right_val_label, right_test_data, right_test_label))
 
     def merge_results(self, results):
-        for data_pair in results:
-            for left_eye_data, right_eye_data in data_pair:
-                self.merged_data.append(left_eye_data)
-                self.merged_labels.append(right_eye_data)
+        merged_train_data = []
+        merged_train_labels = []
+        merged_val_data = []
+        merged_val_labels = []
+        merged_test_data = []
+        merged_test_labels = []
+        
+        for result in results:
+            (left_train_data, left_train_label, left_val_data, left_val_label, left_test_data, left_test_label, 
+            right_train_data, right_train_label, right_val_data, right_val_label, right_test_data, right_test_label) = result
+            
+            merged_train_data.extend([left_train_data, right_train_data])
+            merged_train_labels.extend([left_train_label, right_train_label])
+            merged_val_data.extend([left_val_data, right_val_data])
+            merged_val_labels.extend([left_val_label, right_val_label])
+            merged_test_data.extend([left_test_data, right_test_data])
+            merged_test_labels.extend([left_test_label, right_test_label])
+        
+        return (np.array(merged_train_data), np.array(merged_train_labels), 
+                np.array(merged_val_data), np.array(merged_val_labels), 
+                np.array(merged_test_data), np.array(merged_test_labels))
 
     def parallel_process_data(self):
         # Create a queue to collect results
@@ -427,36 +448,54 @@ class DatasetHz10000:
             process.join()
 
         # Collect results from the queue
+        results = []
         while not result_queue.empty():
             result = result_queue.get()
             if isinstance(result, Exception):
                 raise result
-            for left_eye_data, right_eye_data in result:
-                self.merged_data.append(left_eye_data)
-                self.merged_labels.append(right_eye_data)
+            results.append(result)
 
-    def split_and_save(self, data, label, ratio, seed, eye, user_idx):
+        # Merge results
+        merged_train_data, merged_train_labels, merged_val_data, merged_val_labels, merged_test_data, merged_test_labels = self.merge_results(results)
+
+        os.makedirs(f"{self.cache_data_dir}/data", exist_ok=True)
+        os.makedirs(f"{self.cache_data_dir}/label", exist_ok=True)
+
+        # Save all the merged data splits as NumPy arrays
+        np.save(f"{self.cache_data_dir}/data/train.npy", merged_train_data)
+        np.save(f"{self.cache_data_dir}/label/train.npy", merged_train_labels)
+
+        np.save(f"{self.cache_data_dir}/data/val.npy", merged_val_data)
+        np.save(f"{self.cache_data_dir}/label/val.npy", merged_val_labels)
+
+        np.save(f"{self.cache_data_dir}/data/test.npy", merged_test_data)
+        np.save(f"{self.cache_data_dir}/label/test.npy", merged_test_labels)
+
+        # Optionally, return them if needed
+        return merged_train_data, merged_train_labels, merged_val_data, merged_val_labels, merged_test_data, merged_test_labels
+
+    def split(self, data, label, ratio, seed, eye, user_idx):
         train_data, temp_data, train_label, temp_label = train_test_split(data, label, test_size=1-ratio, random_state=seed)
         val_data, test_data, val_label, test_label = train_test_split(temp_data, temp_label, test_size=0.5, random_state=seed)
         
         
-        os.makedirs(f"{self.cache_data_dir}/train/data", exist_ok=True)
-        os.makedirs(f"{self.cache_data_dir}/train/label", exist_ok=True)
+        # os.makedirs(f"{self.cache_data_dir}/train/data", exist_ok=True)
+        # os.makedirs(f"{self.cache_data_dir}/train/label", exist_ok=True)
 
-        os.makedirs(f"{self.cache_data_dir}/val/data", exist_ok=True)
-        os.makedirs(f"{self.cache_data_dir}/val/label", exist_ok=True)
+        # os.makedirs(f"{self.cache_data_dir}/val/data", exist_ok=True)
+        # os.makedirs(f"{self.cache_data_dir}/val/label", exist_ok=True)
 
-        os.makedirs(f"{self.cache_data_dir}/test/data", exist_ok=True)
-        os.makedirs(f"{self.cache_data_dir}/test/label", exist_ok=True)
+        # os.makedirs(f"{self.cache_data_dir}/test/data", exist_ok=True)
+        # os.makedirs(f"{self.cache_data_dir}/test/label", exist_ok=True)
 
-        np.save(f"{self.cache_data_dir}/train/data/user{user_idx}_{eye}.npy", train_data)
-        np.save(f"{self.cache_data_dir}/train/label/user{user_idx}_{eye}.npy", train_label)
+        # np.save(f"{self.cache_data_dir}/train/data/user{user_idx}_{eye}.npy", train_data)
+        # np.save(f"{self.cache_data_dir}/train/label/user{user_idx}_{eye}.npy", train_label)
 
-        np.save(f"{self.cache_data_dir}/val/data/user{user_idx}_{eye}.npy", val_data)
-        np.save(f"{self.cache_data_dir}/val/label/user{user_idx}_{eye}.npy", val_label)
+        # np.save(f"{self.cache_data_dir}/val/data/user{user_idx}_{eye}.npy", val_data)
+        # np.save(f"{self.cache_data_dir}/val/label/user{user_idx}_{eye}.npy", val_label)
 
-        np.save(f"{self.cache_data_dir}/test/data/user{user_idx}_{eye}.npy", test_data)
-        np.save(f"{self.cache_data_dir}/test/label/user{user_idx}_{eye}.npy", test_label)
+        # np.save(f"{self.cache_data_dir}/test/data/user{user_idx}_{eye}.npy", test_data)
+        # np.save(f"{self.cache_data_dir}/test/label/user{user_idx}_{eye}.npy", test_label)
 
         return train_data, train_label, val_data, val_label, test_data, test_label
     

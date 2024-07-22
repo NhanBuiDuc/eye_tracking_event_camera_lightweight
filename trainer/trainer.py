@@ -187,7 +187,8 @@ class Trainer(ABC):
     def _load_snapshot(self, epoch):
         loc = f"cuda:{self.gpu_id}"
         class_name = str(type(self.model)).split('.')[-1][:-2]  # Extract class name 'Retina'
-        file_name = f"{self.snapshot_path}/{class_name}_epoch_{epoch}.pt"
+        os.makedirs(f"{self.snapshot_path}/pytorch", exist_ok=True)
+        file_name = f"{self.snapshot_path}/pytorch/{class_name}_epoch_{epoch}.pt"
         snapshot = torch.load(file_name, map_location=loc)
         self.model.load_state_dict(snapshot["MODEL_STATE"])
         self.epochs_run = snapshot["EPOCHS_RUN"]

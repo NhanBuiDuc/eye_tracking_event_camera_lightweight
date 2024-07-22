@@ -187,8 +187,17 @@ if __name__ == "__main__":
     train_dataset = DatasetHz10000(split="train", config_params=config_params)  # Example dataset
     val_dataset = DatasetHz10000(split="val", config_params=config_params)  # Example dataset
     test_dataset = DatasetHz10000(split="test", config_params=config_params)  # Example dataset
+
+    train_dataset.load_data()
+    val_dataset.load_data()
+    test_dataset.load_data()
+
+    if dataset_params["use_cache"] == False:
+        train_dataset.parallel_process_data()
+        
     if short_train:
         train_dataset = torch.utils.data.Subset(train_dataset, range(100))
         val_dataset = torch.utils.data.Subset(val_dataset, range(100))
         test_dataset = torch.utils.data.Subset(val_dataset, range(100))
+
     mp.spawn(distributed_job, args=(world_size, train_dataset, val_dataset, test_dataset, dataset_params, training_params), nprocs=world_size)

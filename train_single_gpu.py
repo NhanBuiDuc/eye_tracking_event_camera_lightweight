@@ -95,8 +95,7 @@ def main(train_dataset, val_dataset, test_dataset, dataset_params, training_para
     # Create a Path object
     path = Path(snapshot_path)
     path.mkdir(parents=True, exist_ok=True)
-    short_train = False
-    
+
     if arch_name == "3ET":
         model = Baseline_3ET(
             height=dataset_params["img_height"],
@@ -139,10 +138,7 @@ def main(train_dataset, val_dataset, test_dataset, dataset_params, training_para
     criterions_sequence = create_losses_sequence(losses, dataset_params, training_params)
     metrics_sequence = create_metrics_sequence(metrics)
 
-    if short_train:
-        train_dataset = torch.utils.data.Subset(train_dataset, range(100))
-        val_dataset = torch.utils.data.Subset(val_dataset, range(100))
-        test_dataset = torch.utils.data.Subset(val_dataset, range(100))
+
     # test_dataset = Ini30Dataset(split="test", config_json_path=config_params)  # Example dataset
     dataloader_list = []
     optimizer = torch.optim.SGD(model.parameters(), lr=1e-3)
@@ -175,12 +171,20 @@ if __name__ == "__main__":
             config_params = json.load(f)
     dataset_params = config_params["dataset_params"]
     training_params = config_params["training_params"]
-
+    short_train = False
     train_dataset = DatasetHz10000(split="train", config_params=config_params)  # Example dataset
     val_dataset = DatasetHz10000(split="val", config_params=config_params)  # Example dataset
     test_dataset = DatasetHz10000(split="test", config_params=config_params)  # Example dataset
 
+    train_dataset.load_data()
+    val_dataset.load_data()
+    test_dataset.load_data()
+
     if dataset_params["use_cache"] == False:
         train_dataset.parallel_process_data()
 
+    if short_train:
+        train_dataset = torch.utils.data.Subset(train_dataset, range(100))
+        val_dataset = torch.utils.data.Subset(val_dataset, range(100))
+        test_dataset = torch.utils.data.Subset(val_dataset, range(100))
     main(train_dataset, val_dataset, test_dataset, dataset_params, training_params)

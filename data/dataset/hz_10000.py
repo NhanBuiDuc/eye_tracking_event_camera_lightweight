@@ -256,6 +256,8 @@ class DatasetHz10000:
         self.merged_data = []
         self.merged_labels = []
         self.avg_dt = 0
+
+    def load_data(self):
         for idx in self.data_idx:
             if self.split == "train":
                 # Load cached training data
@@ -278,7 +280,8 @@ class DatasetHz10000:
             else:
                 raise ValueError("Invalid split type specified. Must be 'train', 'val', or 'test'.")
             self.merged_data.extend([left_eye_data, right_eye_data])
-            self.merged_labels.extend([left_labels, right_labels])        
+            self.merged_labels.extend([left_labels, right_labels])
+
         # if self.use_cache == False:
         #     self.parallel_process_data()
         # else:

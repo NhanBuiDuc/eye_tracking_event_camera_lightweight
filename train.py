@@ -179,7 +179,7 @@ if __name__ == "__main__":
     torch.set_num_interop_threads(10)
     # dist.init_process_group("nccl")
     # rank = dist.get_rank()
-    gpus_list = [0]
+    gpus_list = [2, 3, 4]
     n_gpus = torch.cuda.device_count()
     # print(f"Start running basic DDP example on rank {rank}.")
     os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(map(str, gpus_list)) # Use GPUs 0 and 1

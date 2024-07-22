@@ -81,14 +81,9 @@ def create_losses_sequence(losses: list, dataset_params: dict, training_params: 
     losses_sequence = LossSequence(results)
     return losses_sequence
 
-def distributed_job(rank, world_size):
+def distributed_job(rank, world_size, train_dataset, val_dataset, test_dataset, dataset_params, training_params):
     setup_ddp(rank, world_size)
-    config_path = "config/evb_eye.json"
-    if config_path is not None:
-        with open(config_path, 'r') as f:
-            config_params = json.load(f)
-    dataset_params = config_params["dataset_params"]
-    training_params = config_params["training_params"]
+
     arch_name = "LSTM"
     optimizer =  training_params["optimizer"]
     lr_model = training_params["lr_model"]
@@ -101,7 +96,7 @@ def distributed_job(rank, world_size):
     # Create a Path object
     path = Path(snapshot_path)
     path.mkdir(parents=True, exist_ok=True)
-    short_train = False
+
     
     if arch_name == "3ET":
         model = Baseline_3ET(
@@ -144,13 +139,7 @@ def distributed_job(rank, world_size):
 
     criterions_sequence = create_losses_sequence(losses, dataset_params, training_params)
     metrics_sequence = create_metrics_sequence(metrics)
-    train_dataset = DatasetHz10000(split="train", config_params=config_params)  # Example dataset
-    val_dataset = DatasetHz10000(split="val", config_params=config_params)  # Example dataset
-    test_dataset = DatasetHz10000(split="test", config_params=config_params)  # Example dataset
-    if short_train:
-        train_dataset = torch.utils.data.Subset(train_dataset, range(100))
-        val_dataset = torch.utils.data.Subset(val_dataset, range(100))
-        test_dataset = torch.utils.data.Subset(val_dataset, range(100))
+
     # test_dataset = Ini30Dataset(split="test", config_json_path=config_params)  # Example dataset
     dataloader_list = []
 
@@ -188,5 +177,18 @@ if __name__ == "__main__":
     world_size = len(gpus_list)
     # setup_ddp(gpu_indices = [0, 1, 2], rank = rank, world_size)
     # create model and move it to GPU with id rank
-
-    mp.spawn(distributed_job, args=(world_size,), nprocs=world_size)
+    short_train = False
+    config_path = "config/evb_eye.json"
+    if config_path is not None:
+        with open(config_path, 'r') as f:
+            config_params = json.load(f)
+    dataset_params = config_params["dataset_params"]
+    training_params = config_params["training_params"]
+    train_dataset = DatasetHz10000(split="train", config_params=config_params)  # Example dataset
+    val_dataset = DatasetHz10000(split="val", config_params=config_params)  # Example dataset
+    test_dataset = DatasetHz10000(split="test", config_params=config_params)  # Example dataset
+    if short_train:
+        train_dataset = torch.utils.data.Subset(train_dataset, range(100))
+        val_dataset = torch.utils.data.Subset(val_dataset, range(100))
+        test_dataset = torch.utils.data.Subset(val_dataset, range(100))
+    mp.spawn(distributed_job, args=(world_size, train_dataset, val_dataset, test_dataset, dataset_params, training_params), nprocs=world_size)

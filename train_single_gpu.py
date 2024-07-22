@@ -80,13 +80,9 @@ def create_losses_sequence(losses: list, dataset_params: dict, training_params: 
     losses_sequence = LossSequence(results)
     return losses_sequence
 
-def main():
+def main(train_dataset, val_dataset, test_dataset, dataset_params, training_params):
     config_path = "config/evb_eye.json"
-    if config_path is not None:
-        with open(config_path, 'r') as f:
-            config_params = json.load(f)
-    dataset_params = config_params["dataset_params"]
-    training_params = config_params["training_params"]
+
     arch_name = "LSTM"
     optimizer =  training_params["optimizer"]
     lr_model = training_params["lr_model"]
@@ -142,9 +138,7 @@ def main():
 
     criterions_sequence = create_losses_sequence(losses, dataset_params, training_params)
     metrics_sequence = create_metrics_sequence(metrics)
-    train_dataset = DatasetHz10000(split="train", config_params=config_params)  # Example dataset
-    val_dataset = DatasetHz10000(split="val", config_params=config_params)  # Example dataset
-    test_dataset = DatasetHz10000(split="test", config_params=config_params)  # Example dataset
+
     if short_train:
         train_dataset = torch.utils.data.Subset(train_dataset, range(100))
         val_dataset = torch.utils.data.Subset(val_dataset, range(100))
@@ -175,4 +169,18 @@ if __name__ == "__main__":
     torch.set_num_threads(10)
     torch.set_num_interop_threads(10)
 
-    main()
+    config_path = "config/evb_eye.json"
+    if config_path is not None:
+        with open(config_path, 'r') as f:
+            config_params = json.load(f)
+    dataset_params = config_params["dataset_params"]
+    training_params = config_params["training_params"]
+
+    train_dataset = DatasetHz10000(split="train", config_params=config_params)  # Example dataset
+    val_dataset = DatasetHz10000(split="val", config_params=config_params)  # Example dataset
+    test_dataset = DatasetHz10000(split="test", config_params=config_params)  # Example dataset
+
+    if dataset_params["use_cache"] == False:
+        train_dataset.parallel_process_data()
+
+    main(train_dataset, val_dataset, test_dataset, dataset_params, training_params)

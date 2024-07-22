@@ -94,12 +94,11 @@ class DistributedTrainerBase(ABC):
         targets = []
         # gpus = []
         for source, target in (self.train_data_loader):
-            b, t, w, h = target.shape
             source = source.to(self.gpu_id)
             target = target.to(self.gpu_id)
             self.optimizer.zero_grad()
             output = self.model(source)
-            output = self.reshape(output, [b, t, c, w, h])
+            output = self.reshape(output, [target.shape])
             outputs.append(output.cpu().detach().numpy())
             targets.append(target.cpu().detach().numpy())
             # gpus.append(self.gpu_id)

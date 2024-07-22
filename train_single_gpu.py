@@ -179,8 +179,13 @@ if __name__ == "__main__":
     train_dataset.load_data()
     val_dataset.load_data()
     test_dataset.load_data()
+    
+    if dataset_params["use_cache"] == True:
+        train_dataset.load_data()
+        val_dataset.load_data()
+        test_dataset.load_data()
 
-    if dataset_params["use_cache"] == False:
+    elif dataset_params["use_cache"] == False:
         train_dataset.parallel_process_data()
 
     if short_train:

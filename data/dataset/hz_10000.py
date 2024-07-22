@@ -234,7 +234,7 @@ class DatasetHz10000:
     ):
         self.frame_stack = []
         self.event_stack = []
-        self.split = split
+        self.split_data = split
             
         # self.shuffle = shuffle
         for key, value in config_params.items():
@@ -284,8 +284,8 @@ class DatasetHz10000:
 
 
     def load_data(self):
-        data_path = f"{self.cache_data_dir}/data/{self.split}.npy"
-        label_path = f"{self.cache_data_dir}/label/{self.split}.npy"
+        data_path = f"{self.cache_data_dir}/data/{self.split_data}.npy"
+        label_path = f"{self.cache_data_dir}/label/{self.split_data}.npy"
 
         self.merged_data = np.load(data_path)
         self.merged_labels = np.load(label_path)
@@ -396,8 +396,8 @@ class DatasetHz10000:
         left_labels = self.target_transform(left_labels)
         right_labels = self.target_transform(right_labels)
 
-        left_train_data, left_train_label, left_val_data, left_val_label, left_test_data, left_test_label = self.split(left_eye_data, left_labels, self.split_ratio, 42, "left", idx)
-        right_train_data, right_train_label, right_val_data, right_val_label, right_test_data, right_test_label = self.split(right_eye_data, right_labels, self.split_ratio, 42, "right", idx)
+        left_train_data, left_train_label, left_val_data, left_val_label, left_test_data, left_test_label = self.split_data(left_eye_data, left_labels, self.split_ratio, 42, "left", idx)
+        right_train_data, right_train_label, right_val_data, right_val_label, right_test_data, right_test_label = self.split_data(right_eye_data, right_labels, self.split_ratio, 42, "right", idx)
 
         # result_queue.put([(left_train_data, left_train_label), (right_train_data, right_train_label)])
         # result_queue.put([(left_val_data, left_val_label), (right_val_data, right_val_label)])
@@ -474,7 +474,7 @@ class DatasetHz10000:
         # Optionally, return them if needed
         return merged_train_data, merged_train_labels, merged_val_data, merged_val_labels, merged_test_data, merged_test_labels
 
-    def split(self, data, label, ratio, seed, eye, user_idx):
+    def split_data(self, data, label, ratio, seed, eye, user_idx):
         train_data, temp_data, train_label, temp_label = train_test_split(data, label, test_size=1-ratio, random_state=seed)
         val_data, test_data, val_label, test_label = train_test_split(temp_data, temp_label, test_size=0.5, random_state=seed)
         

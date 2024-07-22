@@ -234,7 +234,7 @@ class DatasetHz10000:
     ):
         self.frame_stack = []
         self.event_stack = []
-        self.split_data = split
+        self.split = split
             
         # self.shuffle = shuffle
         for key, value in config_params.items():
@@ -284,8 +284,8 @@ class DatasetHz10000:
 
 
     def load_data(self):
-        data_path = f"{self.cache_data_dir}/data/{self.split_data}.npy"
-        label_path = f"{self.cache_data_dir}/label/{self.split_data}.npy"
+        data_path = f"{self.cache_data_dir}/data/{self.split}.npy"
+        label_path = f"{self.cache_data_dir}/label/{self.split}.npy"
 
         self.merged_data = np.load(data_path)
         self.merged_labels = np.load(label_path)

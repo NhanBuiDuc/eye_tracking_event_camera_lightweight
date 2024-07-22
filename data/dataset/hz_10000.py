@@ -26,6 +26,11 @@ import struct
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import train_test_split
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import multiprocessing as mp
+from functools import partial
+from multiprocessing import Queue, Process
+
 events_struct = np.dtype([
     ('t', np.uint32),
     ('x', np.uint16),
@@ -221,7 +226,6 @@ class DynamicWindowGetItemStrategy(GetItemStrategy):
         # labels_tensor = labels.float()
         return events, labels, avg_dt
 
-
 class DatasetHz10000:
     def __init__(
         self,
@@ -252,7 +256,102 @@ class DatasetHz10000:
         self.merged_data = []
         self.merged_labels = []
         self.avg_dt = 0
-        for idx in self.data_idx:
+        self.parallel_process_data()
+        # for idx in self.data_idx:
+        #     if self.use_cache and self.cache_files_exist(idx, "left") and self.cache_files_exist(idx, "right"):
+        #         if self.split == "train":
+        #             # Load cached training data
+        #             left_eye_data = np.load(f"{self.cache_data_dir}/train/data/user{idx}_left.npy")
+        #             left_labels = np.load(f"{self.cache_data_dir}/train/label/user{idx}_left.npy", allow_pickle=True)
+        #             right_eye_data = np.load(f"{self.cache_data_dir}/train/data/user{idx}_right.npy")
+        #             right_labels = np.load(f"{self.cache_data_dir}/train/label/user{idx}_right.npy", allow_pickle=True)
+        #         elif self.split == "val":
+        #             # Load cached validation data
+        #             left_eye_data = np.load(f"{self.cache_data_dir}/val/data/user{idx}_left.npy")
+        #             left_labels = np.load(f"{self.cache_data_dir}/val/label/user{idx}_left.npy", allow_pickle=True)
+        #             right_eye_data = np.load(f"{self.cache_data_dir}/val/data/user{idx}_right.npy")
+        #             right_labels = np.load(f"{self.cache_data_dir}/val/label/user{idx}_right.npy", allow_pickle=True)
+        #         elif self.split == "test":
+        #             # Load cached test data
+        #             left_eye_data = np.load(f"{self.cache_data_dir}/test/data/user{idx}_left.npy")
+        #             left_labels = np.load(f"{self.cache_data_dir}/test/label/user{idx}_left.npy", allow_pickle=True)
+        #             right_eye_data = np.load(f"{self.cache_data_dir}/test/data/user{idx}_right.npy")
+        #             right_labels = np.load(f"{self.cache_data_dir}/test/label/user{idx}_right.npy", allow_pickle=True)
+        #         else:
+        #             raise ValueError("Invalid split type specified. Must be 'train', 'val', or 'test'.")
+        #         # Merge loaded data and labels
+        #         self.merged_data.extend([left_eye_data, right_eye_data])
+        #         self.merged_labels.extend([left_labels, right_labels])
+        #     else:
+        #         # Initialize dictionaries for each idx
+        #         self.all_data[idx] = {}
+        #         self.all_labels[idx] = {}            
+        #         # self.transform, self.target_transform = get_transforms(self.dataset_params, self.training_params)
+        #         left_frame_stack, left_event_stack, left_labels = self.collect_data(idx, 0)
+        #         right_frame_stack, right_event_stack, right_labels = self.collect_data(idx, 1)
+                
+        #         left_pols, left_xs, left_ys, left_ts = extract_event_components(left_event_stack)
+        #         right_pols, right_xs, right_ys, right_ts = extract_event_components(right_event_stack)
+        #         max_xs, min_xs = max(left_xs), min(left_xs)
+        #         max_ys, min_ys = max(left_ys), min(left_ys)
+        #         max_ts, min_ts = max(left_ts), min(left_ts)
+        #         print(f"User: {idx}")
+        #         print(f'Max x: {max_xs}, Min x: {min_xs}')
+        #         print(f'Max y: {max_ys}, Min y: {min_ys}')
+        #         print(f'Max t: {max_ts}, Min t: {min_ts}')
+        #         print(f'Max row label: {left_labels["row"].max()}, Max column label: {left_labels["col"].max()}')
+
+        #         left_eye_data = make_structured_array(left_ts, left_xs, left_ys, left_pols, dtype=events_struct)
+        #         right_eye_data = make_structured_array(right_ts, right_xs, right_ys, right_pols, dtype=events_struct)
+        #         # normalize
+        #         left_eye_data = self.input_transform(left_eye_data)
+        #         right_eye_data = self.input_transform(right_eye_data)
+
+        #         left_eye_data, left_labels, fixed_window_dt = self.get_item_strategy.get_item(left_eye_data, left_labels, self, self.tonic_transforms)
+        #         right_eye_data, right_labels, fixed_window_dt = self.get_item_strategy.get_item(right_eye_data, right_labels, self, self.tonic_transforms)
+
+        #         left_labels = self.target_transform(left_labels)
+        #         right_labels = self.target_transform(right_labels)
+
+        #         left_train_data, left_train_label, left_val_data, left_val_label, left_test_data, left_test_label = self.split_and_save(left_eye_data, left_labels, self.split_ratio, 42, "left", idx)
+        #         right_train_data, right_train_label, right_val_data, right_val_label, right_test_data, right_test_label = self.split_and_save(right_eye_data, right_labels, self.split_ratio, 42, "right", idx)
+
+        #         self.all_data[idx]["left_data"] = left_eye_data
+        #         self.all_labels[idx]["left_label"] = left_labels
+        #         self.all_data[idx]["right_data"] = right_eye_data
+        #         self.all_labels[idx]["right_label"] = right_labels
+
+        #         if self.split == "train":
+        #             self.merged_data.append(left_train_data)
+        #             self.merged_data.append(right_train_data)
+        #             self.merged_labels.append(left_train_label)
+        #             self.merged_labels.append(right_train_label)
+        #         elif self.split == "val":
+        #             self.merged_data.append(left_val_data)
+        #             self.merged_data.append(right_val_data)
+        #             self.merged_labels.append(left_val_label)
+        #             self.merged_labels.append(right_val_label)
+        #         elif self.split == "test":
+        #             self.merged_data.append(left_test_data)
+        #             self.merged_data.append(right_test_data)
+        #             self.merged_labels.append(left_test_label)
+        #             self.merged_labels.append(right_test_label)
+
+    def __len__(self):
+        return len(self.merged_labels)
+
+    def __repr__(self):
+        return self.__class__.__name__
+
+    def __getitem__(self, index):
+        data = self.merged_data[index]
+        label = self.merged_labels[index]
+        data = torch.tensor(data)
+        label = torch.tensor(label)
+        return data, label
+    
+    def process_data_for_idx(self, idx, result_queue):
+        try:
             if self.use_cache and self.cache_files_exist(idx, "left") and self.cache_files_exist(idx, "right"):
                 if self.split == "train":
                     # Load cached training data
@@ -274,9 +373,7 @@ class DatasetHz10000:
                     right_labels = np.load(f"{self.cache_data_dir}/test/label/user{idx}_right.npy", allow_pickle=True)
                 else:
                     raise ValueError("Invalid split type specified. Must be 'train', 'val', or 'test'.")
-                # Merge loaded data and labels
-                self.merged_data.extend([left_eye_data, right_eye_data])
-                self.merged_labels.extend([left_labels, right_labels])
+                result_queue.put([(left_eye_data, left_labels), (right_eye_data, right_labels)])
             else:
                 # Initialize dictionaries for each idx
                 self.all_data[idx] = {}
@@ -317,34 +414,44 @@ class DatasetHz10000:
                 self.all_labels[idx]["right_label"] = right_labels
 
                 if self.split == "train":
-                    self.merged_data.append(left_train_data)
-                    self.merged_data.append(right_train_data)
-                    self.merged_labels.append(left_train_label)
-                    self.merged_labels.append(right_train_label)
+                    result_queue.put([(left_train_data, left_train_label), (right_train_data, right_train_label)])
                 elif self.split == "val":
-                    self.merged_data.append(left_val_data)
-                    self.merged_data.append(right_val_data)
-                    self.merged_labels.append(left_val_label)
-                    self.merged_labels.append(right_val_label)
+                    result_queue.put([(left_val_data, left_val_label), (right_val_data, right_val_label)])
                 elif self.split == "test":
-                    self.merged_data.append(left_test_data)
-                    self.merged_data.append(right_test_data)
-                    self.merged_labels.append(left_test_label)
-                    self.merged_labels.append(right_test_label)
+                    result_queue.put([(left_test_data, left_test_label), (right_test_data, right_test_label)])
+        except Exception as e:
+            result_queue.put(e)
 
-    def __len__(self):
-        return len(self.merged_labels)
+    def merge_results(self, results):
+        for data_pair in results:
+            for left_eye_data, right_eye_data in data_pair:
+                self.merged_data.append(left_eye_data)
+                self.merged_labels.append(right_eye_data)
 
-    def __repr__(self):
-        return self.__class__.__name__
+    def parallel_process_data(self):
+        # Create a queue to collect results
+        result_queue = Queue()
 
-    def __getitem__(self, index):
-        data = self.merged_data[index]
-        label = self.merged_labels[index]
-        data = torch.tensor(data)
-        label = torch.tensor(label)
-        return data, label
-    
+        # Create and start a process for each idx
+        processes = []
+        for idx in self.data_idx:
+            process = Process(target=partial(self.process_data_for_idx, idx, result_queue))
+            processes.append(process)
+            process.start()
+
+        # Wait for all processes to finish
+        for process in processes:
+            process.join()
+
+        # Collect results from the queue
+        while not result_queue.empty():
+            result = result_queue.get()
+            if isinstance(result, Exception):
+                raise result
+            for left_eye_data, right_eye_data in result:
+                self.merged_data.append(left_eye_data)
+                self.merged_labels.append(right_eye_data)
+
     def split_and_save(self, data, label, ratio, seed, eye, user_idx):
         train_data, temp_data, train_label, temp_label = train_test_split(data, label, test_size=1-ratio, random_state=seed)
         val_data, test_data, val_label, test_label = train_test_split(temp_data, temp_label, test_size=0.5, random_state=seed)
@@ -369,6 +476,7 @@ class DatasetHz10000:
         np.save(f"{self.cache_data_dir}/test/label/user{user_idx}_{eye}.npy", test_label)
 
         return train_data, train_label, val_data, val_label, test_data, test_label
+    
     def cache_files_exist(self, user_idx, eye):
         """Check if all cache files for a given user and eye exist."""
         required_files = [

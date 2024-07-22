@@ -282,11 +282,11 @@ class DatasetHz10000:
                     else:
                         raise ValueError("Invalid split type specified. Must be 'train', 'val', or 'test'.")
                     
-                    # Merge loaded data and labels
-                    left_eye_data = left_eye_data.reshape(left_eye_data.shape[0] / self.num_bins, self.num_bins, self.input_channel, self.img_width, self.img_height)
-                    left_labels = left_labels.reshape(left_labels.shape[0] / self.num_bins, self.num_bins, self.input_channel, self.img_width, self.img_height)
-                    right_eye_data = right_eye_data.reshape(right_eye_data.shape[0] / self.num_bins, self.num_bins, self.input_channel, self.img_width, self.img_height)
-                    right_labels = right_labels.reshape(right_labels.shape[0] / self.num_bins, self.num_bins, self.input_channel, self.img_width, self.img_height)
+                    # # Merge loaded data and labels
+                    # left_eye_data = left_eye_data.reshape(left_eye_data.shape[0] / self.num_bins, self.num_bins, self.input_channel, self.img_width, self.img_height)
+                    # left_labels = left_labels.reshape(left_labels.shape[0] / self.num_bins, self.num_bins, self.input_channel, self.img_width, self.img_height)
+                    # right_eye_data = right_eye_data.reshape(right_eye_data.shape[0] / self.num_bins, self.num_bins, self.input_channel, self.img_width, self.img_height)
+                    # right_labels = right_labels.reshape(right_labels.shape[0] / self.num_bins, self.num_bins, self.input_channel, self.img_width, self.img_height)
 
                     self.merged_data.extend([left_eye_data, right_eye_data])
                     self.merged_labels.extend([left_labels, right_labels])
@@ -519,7 +519,7 @@ class DatasetHz10000:
 
             # frame
             data_temp = np.zeros(
-                (1, self.num_bins, self.input_channel, self.img_width, self.img_height)
+                (self.num_bins, self.input_channel, self.img_width, self.img_height)
             )
 
             # indexes

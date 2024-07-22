@@ -86,7 +86,7 @@ def get_path_info(path):
     return {'index': index, 'row': row, 'col': col, 'stimulus_type': stimulus_type,
             'timestamp': timestamp}
 
-def find_closest_index(df, target, start_time, return_last):
+def find_closest_index(df, target, start_time, end_time = None, return_last = False):
     # Create a copy of the DataFrame
     df = df.copy()
     
@@ -99,7 +99,8 @@ def find_closest_index(df, target, start_time, return_last):
     
     # Filter to include only rows with a timestamp larger than the given timestep
     df_filtered = df[df['timestamp'] > start_time]
-    
+    if end_time != None:
+        df_filtered = df[df['timestamp'] < end_time]        
     # Ensure that we have rows after timestamp filtering
     if df_filtered.empty:
         return None
@@ -227,8 +228,6 @@ class DatasetHz10000:
         split: str,
         config_params: dict,
     ):
-        self.user = 3
-        self.data_dir = f"data/dataset/eye_data"
         self.frame_stack = []
         self.event_stack = []
         self.split = split
@@ -413,7 +412,7 @@ class DatasetHz10000:
         # append multiple data slices
         batch_data = []
         batch_label = []
-
+        switch = 0
         while(end_time < tab_last["timestamp"]):
 
             # start_label = (int(tab_start.row.item()), int(tab_start.col.item()))
@@ -489,9 +488,34 @@ class DatasetHz10000:
             batch_data.append(data_temp)
             batch_label.append(np.column_stack((x_axis, y_axis)))
             try:
-                idx = find_closest_index(labels, [x_axis[-1], y_axis[-1]], end_time, return_last=False)
-                start_time = labels["timestamp"].iloc[idx]   
-                end_time = start_time + self.fixed_window_dt * self.num_bins
+                # Equal head and tail
+
+                if switch == 0:
+                    idx = find_closest_index(labels, [x_axis[-1], y_axis[-1]], return_last=False) - 1
+                    start_time = labels["timestamp"].iloc[idx]   
+                    end_time = start_time + self.fixed_window_dt * self.num_bins
+                    switch = 1
+                # small head and big tail
+
+                elif switch == 1:
+                    idx = idx + 1
+                    start_time = labels["timestamp"].iloc[idx]   
+                    end_time = start_time + self.fixed_window_dt * self.num_bins
+                    switch = 2
+
+                # Mono data
+                elif switch == 2:
+                    idx = idx + 1
+                    start_time = labels["timestamp"].iloc[idx]   
+                    end_time = start_time + self.fixed_window_dt * self.num_bins
+                    switch = 3
+                # big head and small tail
+                elif switch == 3:
+                    idx = idx + 1
+                    start_time = labels["timestamp"].iloc[idx]   
+                    end_time = start_time + self.fixed_window_dt * self.num_bins
+                    switch = 0
+
             except:
                 start_time = end_time
                 end_time = start_time + self.fixed_window_dt * self.num_bins                

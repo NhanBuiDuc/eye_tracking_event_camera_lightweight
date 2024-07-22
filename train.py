@@ -83,7 +83,7 @@ def create_losses_sequence(losses: list, dataset_params: dict, training_params: 
 
 def distributed_job(rank, world_size):
     setup_ddp(rank, world_size)
-    config_path = "config/ini_30.json"
+    config_path = "config/evb_eye.json"
     if config_path is not None:
         with open(config_path, 'r') as f:
             config_params = json.load(f)

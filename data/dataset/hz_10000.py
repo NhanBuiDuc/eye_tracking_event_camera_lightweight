@@ -241,7 +241,7 @@ class DatasetHz10000:
             setattr(self, key, value)
             for sub_key, sub_value in value.items():
                 setattr(self, sub_key, sub_value)
-        self.data_idx = list(range(1, 28))
+        self.data_idx = list(range(1, 9))
 
         if self.get_item_strategy == "static_window":
             self.get_item_strategy = StaticWindowGetItemStrategy()

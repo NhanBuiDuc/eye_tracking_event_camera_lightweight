@@ -24,7 +24,7 @@
         "losses": ["mean_squared_error"],
         "lr_model": 1e-4,
         "num_epochs": 200,
-        "batch_size": 1,
+        "batch_size": 128,
         "optimizer": "Adam",
         "scheduler": "StepLR",
         "out_dir": "output",

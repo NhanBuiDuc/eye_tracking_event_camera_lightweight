@@ -243,7 +243,7 @@ class DatasetHz10000:
                 setattr(self, sub_key, sub_value)
 
         if self.split == "train":
-            train_val_idx = list(range(19, 27))
+            train_val_idx = list(range(26, 27))
             #random.shuffle(train_val_idxs)
             for idx in self.val_set_idx:
                 if idx in train_val_idx:

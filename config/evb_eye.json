@@ -2,7 +2,7 @@
     "dataset_params": { 
         "dataset_name": "eye_data",
         "get_item_strategy": "static_window",
-        "val_set_idx": [21, 22, 23, 24, 25, 26, 27],
+        "val_set_idx": [27],
         "data_dir": "data/dataset/eye_data",
         "cache_data_dir": "cache/eye_data",
         "num_bins": 64,

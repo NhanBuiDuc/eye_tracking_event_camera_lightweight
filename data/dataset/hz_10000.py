@@ -341,9 +341,6 @@ class DatasetHz10000:
             length_index = length_index + len(left_eye_indexes) + len(right_eye_indexes)
             self.length_index[idx] = length_index
 
-
-
-
     def load_data(self):
         data_path = f"{self.cache_data_dir}/data/{self.split}.npy"
         label_path = f"{self.cache_data_dir}/label/{self.split}.npy"

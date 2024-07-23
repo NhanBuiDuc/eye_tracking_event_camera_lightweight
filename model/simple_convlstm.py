@@ -285,7 +285,7 @@ class SimpleConvLSTM(nn.Module):
         data = F.relu(self.fc1(data))
         data = self.drop(data)
         data = self.fc2(data)
-        return data
+        return data, hidden_states
 
 # if __name__ == "__main__":
 #     import torch

@@ -257,6 +257,40 @@ class DatasetHz10000:
         self.merged_labels = []
         self.avg_dt = 0
 
+    def prepare_index_list(self):
+        for idx in self.data_idx:
+            # Initialize dictionaries for each idx
+            self.all_data[idx] = {}
+            self.all_labels[idx] = {}            
+            # self.transform, self.target_transform = get_transforms(self.dataset_params, self.training_params)
+            left_frame_stack, left_event_stack, left_labels = self.collect_data(idx, 0)
+            right_frame_stack, right_event_stack, right_labels = self.collect_data(idx, 1)
+            
+            left_pols, left_xs, left_ys, left_ts = extract_event_components(left_event_stack)
+            right_pols, right_xs, right_ys, right_ts = extract_event_components(right_event_stack)
+            max_xs, min_xs = max(left_xs), min(left_xs)
+            max_ys, min_ys = max(left_ys), min(left_ys)
+            max_ts, min_ts = max(left_ts), min(left_ts)
+            print(f"User: {idx}")
+            print(f'Max x: {max_xs}, Min x: {min_xs}')
+            print(f'Max y: {max_ys}, Min y: {min_ys}')
+            print(f'Max t: {max_ts}, Min t: {min_ts}')
+            print(f'Max row label: {left_labels["row"].max()}, Max column label: {left_labels["col"].max()}')
+
+            left_eye_data = make_structured_array(left_ts, left_xs, left_ys, left_pols, dtype=events_struct)
+            right_eye_data = make_structured_array(right_ts, right_xs, right_ys, right_pols, dtype=events_struct)
+            # normalize
+            left_eye_data = self.input_transform(left_eye_data)
+            right_eye_data = self.input_transform(right_eye_data)
+
+            left_eye_data, left_labels, fixed_window_dt = self.get_item_strategy.get_item(left_eye_data, left_labels, self, self.tonic_transforms)
+            right_eye_data, right_labels, fixed_window_dt = self.get_item_strategy.get_item(right_eye_data, right_labels, self, self.tonic_transforms)
+
+            left_labels = self.target_transform(left_labels)
+            right_labels = self.target_transform(right_labels)
+
+            left_train_data, left_train_label, left_val_data, left_val_label, left_test_data, left_test_label = self.split_data(left_eye_data, left_labels, self.split_ratio, 42, "left", idx)
+            right_train_data, right_train_label, right_val_data, right_val_label, right_test_data, right_test_label = self.split_data(right_eye_data, right_labels, self.split_ratio, 42, "right", idx)
     # def load_data(self):
     #     for idx in self.data_idx:
     #         if self.split == "train":
@@ -618,27 +652,26 @@ class DatasetHz10000:
             batch_data.append(data_temp)
             batch_label.append(np.column_stack((x_axis, y_axis)))
             try:
-                # Equal head and tail
+                # # Equal head and tail
 
                 if switch == 0:
                     idx = find_closest_index(labels, [x_axis[-1], y_axis[-1]], return_last=False) - 2
                     start_time = labels["timestamp"].iloc[idx]   
                     end_time = start_time + self.fixed_window_dt * self.num_bins
-                    switch = 1
-                # small head and big tail
+                # # small head and big tail
 
-                elif switch == 1:
-                    idx = idx + 1
-                    start_time = labels["timestamp"].iloc[idx]   
-                    end_time = start_time + self.fixed_window_dt * self.num_bins
-                    switch = 2
+                # elif switch == 1:
+                #     idx = idx + 1
+                #     start_time = labels["timestamp"].iloc[idx]   
+                #     end_time = start_time + self.fixed_window_dt * self.num_bins
+                #     switch = 2
 
-                # Mono data
-                elif switch == 2:
-                    idx = idx + 1
-                    start_time = labels["timestamp"].iloc[idx]   
-                    end_time = start_time + self.fixed_window_dt * self.num_bins
-                    switch = 3
+                # # Mono data
+                # elif switch == 2:
+                #     idx = idx + 1
+                #     start_time = labels["timestamp"].iloc[idx]   
+                #     end_time = start_time + self.fixed_window_dt * self.num_bins
+                #     switch = 3
                 # # big head and small tail
                 # elif switch == 3:
                 #     idx = idx + 2

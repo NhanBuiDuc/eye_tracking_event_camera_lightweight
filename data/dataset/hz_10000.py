@@ -290,10 +290,14 @@ class DatasetHz10000:
             indexes.append(idx + 4)
             idx = idx + 4
 
-            x_label_at_index = label["row"].iloc[idx]  
-            y_label_at_index = label["col"].iloc[idx]  
-            start_time = label["timestamp"].iloc[idx]   
-            end_time = start_time + self.fixed_window_dt * self.num_bins
+            try:
+                x_label_at_index = label["row"].iloc[idx]
+                y_label_at_index = label["col"].iloc[idx]
+                start_time = label["timestamp"].iloc[idx]
+                end_time = start_time + self.fixed_window_dt * self.num_bins
+            except IndexError:
+                print("Index out of bounds. Breaking the loop.")
+                break
         return indexes
             
     def prepare_unstructured_data(self):

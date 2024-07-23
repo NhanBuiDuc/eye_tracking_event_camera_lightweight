@@ -224,7 +224,7 @@ class SimpleConvLSTM(nn.Module):
         self.convlstm4 = ConvLSTM(input_dim=32, hidden_dim=64, kernel_size=(3, 3), num_layers=1, batch_first=True)
         self.bn4 = nn.BatchNorm3d(64)
         self.pool4 = nn.MaxPool3d(kernel_size=(1, 2, 2))
-        self.fc1 = nn.Linear(8192, 156)
+        self.fc1 = nn.Linear(1024, 156)
         self.drop = nn.Dropout(0.5)
         self.fc2 = nn.Linear(156, 2)
         # get_summary(self)
@@ -281,7 +281,7 @@ class SimpleConvLSTM(nn.Module):
 
         # Flatten and apply LSTM layer
         b, c, seq, h, w = x.size()
-        data = x.reshape(b, -1)
+        data = x.reshape(b, seq, -1)
         data = F.relu(self.fc1(data))
         data = self.drop(data)
         data = self.fc2(data)

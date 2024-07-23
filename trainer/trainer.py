@@ -95,12 +95,13 @@ class Trainer(ABC):
             source = source.to(self.gpu_id)
             target = target.to(self.gpu_id)
             self.optimizer.zero_grad()
-            for data, idx in enumerate(source):
+            for idx, data in enumerate(source):
+                data = data.unsqueeze(0)
                 if idx == 0:
                     output, hidden_states = self.model(data, None)
                 else:
                     output, hidden_states = self.model(data, hidden_states)              
-                output = self.reshape(output, [target.shape])
+
                 timestep_outputs.append(output)
             # Convert timestep_outputs to a tensor
             timestep_outputs_tensor = torch.stack(timestep_outputs)

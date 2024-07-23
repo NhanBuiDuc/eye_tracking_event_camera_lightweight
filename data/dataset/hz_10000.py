@@ -30,12 +30,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import multiprocessing as mp
 from functools import partial
 from multiprocessing import Queue, Process
-
+from tqdm import tqdm
 events_struct = np.dtype([
     ('t', np.uint32),
     ('x', np.uint16),
     ('y', np.uint16),
-    ('pol', np.uint8)
+    ('p', np.uint8)
 ])
 
 'Types of data'
@@ -241,7 +241,16 @@ class DatasetHz10000:
             setattr(self, key, value)
             for sub_key, sub_value in value.items():
                 setattr(self, sub_key, sub_value)
-        self.data_idx = list(range(1, 27))
+
+        if self.split == "train":
+            train_val_idx = list(range(1, 27))
+            #random.shuffle(train_val_idxs)
+            for idx in self.val_set_idx:
+                if idx in train_val_idx:
+                    train_val_idx.remove(idx)
+            self.data_idx = train_val_idx
+        else:
+            self.data_idx = self.val_set_idx
 
         if self.get_item_strategy == "static_window":
             self.get_item_strategy = StaticWindowGetItemStrategy()
@@ -251,17 +260,48 @@ class DatasetHz10000:
         os.makedirs(self.cache_data_dir, exist_ok=True)
 
         self.all_data = {}
-        self.all_labels = {}
+        self.length_index = {}
         # Initialize the merged arrays
         self.merged_data = []
         self.merged_labels = []
         self.avg_dt = 0
+        
+    def find_index_list(self, label):
 
-    def prepare_index_list(self):
+        indexes = []
+        # label start and last
+        tab_start, tab_last = label.iloc[0], label.iloc[-1]
+        # start_label = (int(tab_start.row.item()), int(tab_start.col.item()))
+        # end_label = (int(tab_last.row.item()), int(tab_last.col.item()))
+        idx = find_closest_index(label, [0, 0], tab_start["timestamp"], return_last=False)
+        start_time = label["timestamp"].iloc[idx]   
+        end_time = start_time + self.fixed_window_dt * self.num_bins
+        x_label_at_index = label["row"].iloc[idx]  
+        y_label_at_index = label["col"].iloc[idx]  
+        # append multiple data slices
+        indexes.append(idx)
+
+        while(end_time < tab_last["timestamp"]):
+            idx = find_closest_index(label, [x_label_at_index, y_label_at_index], end_time, return_last=False) - 2
+            indexes.append(idx)
+            indexes.append(idx + 1)
+            indexes.append(idx + 2)
+            indexes.append(idx + 3)
+            indexes.append(idx + 4)
+            idx = idx + 4
+
+            x_label_at_index = label["row"].iloc[idx]  
+            y_label_at_index = label["col"].iloc[idx]  
+            start_time = label["timestamp"].iloc[idx]   
+            end_time = start_time + self.fixed_window_dt * self.num_bins
+        return indexes
+            
+    def prepare_unstructured_data(self):
+        length_index = 0
         for idx in self.data_idx:
+            print(f"Preparing index for user {idx}")
             # Initialize dictionaries for each idx
-            self.all_data[idx] = {}
-            self.all_labels[idx] = {}            
+            self.all_data[idx] = {}        
             # self.transform, self.target_transform = get_transforms(self.dataset_params, self.training_params)
             left_frame_stack, left_event_stack, left_labels = self.collect_data(idx, 0)
             right_frame_stack, right_event_stack, right_labels = self.collect_data(idx, 1)
@@ -283,14 +323,20 @@ class DatasetHz10000:
             left_eye_data = self.input_transform(left_eye_data)
             right_eye_data = self.input_transform(right_eye_data)
 
-            left_eye_data, left_labels, fixed_window_dt = self.get_item_strategy.get_item(left_eye_data, left_labels, self, self.tonic_transforms)
-            right_eye_data, right_labels, fixed_window_dt = self.get_item_strategy.get_item(right_eye_data, right_labels, self, self.tonic_transforms)
+            left_eye_indexes = self.find_index_list(left_labels)
+            right_eye_indexes = self.find_index_list(right_labels)
+            self.all_data[idx] = {
+                "left_eye_normalized_data": left_eye_data,
+                "right_eye_normalized_data": right_eye_data,
+                "left_indexes": left_eye_indexes,
+                "right_eye_indexes": right_eye_indexes,
+                "left_eye_raw_label_dataframe": left_labels,
+                "right_eye_raw_label_dataframe": right_labels,
+                "length": length_index + len(left_eye_indexes) + len(right_eye_indexes)
+            }
+            length_index = length_index + len(left_eye_indexes) + len(right_eye_indexes)
+            self.length_index[idx] = length_index
 
-            left_labels = self.target_transform(left_labels)
-            right_labels = self.target_transform(right_labels)
-
-            left_train_data, left_train_label, left_val_data, left_val_label, left_test_data, left_test_label = self.split_data(left_eye_data, left_labels, self.split_ratio, 42, "left", idx)
-            right_train_data, right_train_label, right_val_data, right_val_label, right_test_data, right_test_label = self.split_data(right_eye_data, right_labels, self.split_ratio, 42, "right", idx)
     # def load_data(self):
     #     for idx in self.data_idx:
     #         if self.split == "train":
@@ -386,19 +432,47 @@ class DatasetHz10000:
         #                 self.merged_labels.append(left_test_label)
         #                 self.merged_labels.append(right_test_label)
 
-    def __len__(self):
-        return len(self.merged_labels)
-
     def __repr__(self):
         return self.__class__.__name__
 
+    def __len__(self):
+        return sum(user_data['length'] for user_data in self.all_data.values())
+
     def __getitem__(self, index):
-        data = self.merged_data[index]
-        label = self.merged_labels[index]
-        data = torch.tensor(data)
-        label = torch.tensor(label)
+        user_idx = None
+        previous_length = 0
+
+        for idx in self.data_idx:
+            if index < self.length_index[idx]:
+                user_idx = idx
+                break
+            previous_length = self.length_index[idx]
+
+        if user_idx is None:
+            raise IndexError("Index out of range")
+
+        relative_index = index - previous_length
+
+        left_indexes = self.all_data[user_idx]["left_indexes"]
+        right_indexes = self.all_data[user_idx]["right_eye_indexes"]
+
+        if relative_index < len(left_indexes):
+            # data = left_eye_data[left_indexes[relative_index]]
+            eye_data = self.all_data[user_idx]["left_eye_normalized_data"]
+            raw_label_dataframe = self.all_data[user_idx]["left_eye_raw_label_dataframe"]
+            timestamp_index = self.all_data[user_idx]["left_indexes"][relative_index]          
+        else:
+            relative_index -= len(left_indexes)
+            eye_data = self.all_data[user_idx]["right_eye_normalized_data"]
+            raw_label_dataframe = self.all_data[user_idx]["right_eye_raw_label_dataframe"]
+            timestamp_index = self.all_data[user_idx]["left_indexes"][relative_index]     
+
+        data, label = self.get_item(eye_data, raw_label_dataframe, timestamp_index)
+        label = self.target_transform(label)
+        data = torch.tensor(data, dtype=torch.float32)
+        label = torch.tensor(label, dtype=torch.float32)
         return data, label
-    
+        
     def process_data_for_idx(self, idx, result_queue):
         # Initialize dictionaries for each idx
         self.all_data[idx] = {}
@@ -564,6 +638,84 @@ class DatasetHz10000:
 
         return np.array(result)
     
+    def get_item(self, data, label, idx):
+        data = {
+            "xy": np.hstack(
+                [data["x"].reshape(-1, 1), data["y"].reshape(-1, 1)]
+            ),
+            "p": data["p"] * 1,
+            "t": data["t"],
+        }
+        start_time = label["timestamp"].iloc[idx]   
+        end_time = start_time + self.fixed_window_dt * self.num_bins
+
+        # start_label = (int(tab_start.row.item()), int(tab_start.col.item()))
+        # end_label = (int(tab_last.row.item()), int(tab_last.col.item()))
+        evs_t = data["t"][data["t"] >= start_time]
+        evs_p, evs_xy = data["p"][-evs_t.shape[0] :], data["xy"][-evs_t.shape[0] :, :]
+
+        # frame
+        data_temp = np.zeros(
+            (self.num_bins, self.input_channel, self.img_width, self.img_height)
+        )
+
+        # indexes
+        start_idx = 0
+
+        # get intermediary labels based on num of bins
+        fixed_timestamps = np.linspace(start_time, end_time, self.num_bins)
+        x_axis, y_axis = [], []
+        for i, fixed_tmp in enumerate(fixed_timestamps):
+
+            # label
+            idx = np.searchsorted(label["timestamp"], fixed_tmp, side="left")
+
+            # Weighted interpolation
+            t0 = label["timestamp"].iloc[idx - 1]
+            t1 = label["timestamp"].iloc[idx]
+
+            weight0 = (t1 - fixed_tmp) / (t1 - t0)
+            weight1 = (fixed_tmp - t0) / (t1 - t0)
+
+            x_axis.append(
+                int(
+                    label.iloc[idx - 1]["row"] * weight0
+                    + label.iloc[idx]["row"] * weight1
+                )
+            )
+            y_axis.append(
+                int(
+                    label.iloc[idx - 1]["col"] * weight0
+                    + label.iloc[idx]["col"] * weight1
+                )
+            )
+
+            # slice
+            t = evs_t[start_idx:][evs_t[start_idx:] <= fixed_tmp]
+            # if t.shape[0] == 0:
+            #     continue
+            xy = evs_xy[start_idx : start_idx + t.shape[0], :]
+            p = evs_p[start_idx : start_idx + t.shape[0]]
+
+            np.add.at(data_temp[i, 0], (xy[p == 0, 0], xy[p == 0, 1]), 1)
+            if self.input_channel > 1:
+                np.add.at(
+                    data_temp[i, self.input_channel - 1], (xy[p == 1, 0], xy[p == 1, 1]), 1
+                )
+                data_temp[i, 0, :, :][
+                    data_temp[i, 1, :, :] >= data_temp[i, 0, :, :]
+                ] = 0  # if ch 1 has more evs than 0
+                data_temp[i, 1, :, :][
+                    data_temp[i, 1, :, :] < data_temp[i, 0, :, :]
+                ] = 0  # if ch 0 has more evs than 1
+
+            data_temp[i] = data_temp[i].clip(0, 1)  # no double events
+
+            # move pointers
+            start_idx += t.shape[0]
+
+        return np.array(data_temp).astype(np.float32), np.array(np.column_stack((x_axis, y_axis))).astype(np.float32)
+        
     def load_static_window(self, data, labels):
         # label start and last
         tab_start, tab_last = labels.iloc[0], labels.iloc[-1]

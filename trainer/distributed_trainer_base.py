@@ -106,7 +106,6 @@ class DistributedTrainerBase(ABC):
                     output, hidden_states = self.model(data, None)
                 else:
                     output, hidden_states = self.model(data, hidden_states)              
-                output = self.reshape(output, [target.shape])
                 timestep_outputs.append(output)
             # Convert timestep_outputs to a tensor
             timestep_outputs_tensor = torch.stack(timestep_outputs)

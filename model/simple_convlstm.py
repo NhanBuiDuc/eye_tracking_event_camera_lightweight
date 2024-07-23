@@ -246,7 +246,7 @@ class SimpleConvLSTM(nn.Module):
         if hidden_states_input is None or hidden_states_input[1] is None:
             h2 = None
         else:
-            h2 = hidden_states_input[0]
+            h2 = hidden_states_input[1]
         x = x.permute(0, 2, 1, 3, 4)
         x, h2 = self.convlstm2(x, h2)
         x = x[0].permute(0, 2, 1, 3, 4)
@@ -258,7 +258,7 @@ class SimpleConvLSTM(nn.Module):
         if hidden_states_input is None or hidden_states_input[2] is None:
             h3 = None
         else:
-            h3 = hidden_states_input[0]
+            h3 = hidden_states_input[2]
         x = x.permute(0, 2, 1, 3, 4)
         x, h3 = self.convlstm3(x, h3)
         x = x[0].permute(0, 2, 1, 3, 4)
@@ -270,7 +270,7 @@ class SimpleConvLSTM(nn.Module):
         if hidden_states_input is None or hidden_states_input[3] is None:
             h4 = None
         else:
-            h4 = hidden_states_input[0]
+            h4 = hidden_states_input[3]
         x = x.permute(0, 2, 1, 3, 4)
         x, h4 = self.convlstm4(x, h4)
         x = x[0].permute(0, 2, 1, 3, 4)

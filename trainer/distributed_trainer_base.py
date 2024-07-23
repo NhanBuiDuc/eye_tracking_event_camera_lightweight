@@ -94,12 +94,23 @@ class DistributedTrainerBase(ABC):
         targets = []
         # gpus = []
         for source, target in (self.train_data_loader):
+            b, t, c = target.shape
+            timestep_outputs = []
+
             source = source.to(self.gpu_id)
             target = target.to(self.gpu_id)
             self.optimizer.zero_grad()
-            output = self.model(source)
-            output = self.reshape(output, [target.shape])
-            outputs.append(output.cpu().detach().numpy())
+            for data, idx in enumerate(source):
+                if idx == 0:
+                    output, hidden_states = self.model(data, None)
+                else:
+                    output, hidden_states = self.model(data, hidden_states)              
+                output = self.reshape(output, [target.shape])
+                timestep_outputs.append(output)
+            # Convert timestep_outputs to a tensor
+            timestep_outputs_tensor = torch.stack(timestep_outputs)
+
+            outputs.append(timestep_outputs_tensor.cpu().detach().numpy())
             targets.append(target.cpu().detach().numpy())
             # gpus.append(self.gpu_id)
 

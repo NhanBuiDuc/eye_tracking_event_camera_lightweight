@@ -147,12 +147,13 @@ class ConvLSTM(nn.Module):
         """
         if not self.batch_first:
             # (t, b, c, h, w) -> (b, t, c, h, w)
-            input_tensor = input_tensor.permute(1, 0, 2, 3, 4) 
+            input_tensor = input_tensor.permute(1, 0, 2, 3, 4)
+            
         b, _, _, h, w = input_tensor.size()
 
         # Implement stateful ConvLSTM
         if hidden_state is not None:
-            raise NotImplementedError()
+            pass
         else:
             # Since the init is done in forward. Can send image size here
             hidden_state = self._init_hidden(batch_size=b,
@@ -223,53 +224,58 @@ class SimpleConvLSTM(nn.Module):
         self.convlstm4 = ConvLSTM(input_dim=32, hidden_dim=64, kernel_size=(3, 3), num_layers=1, batch_first=True)
         self.bn4 = nn.BatchNorm3d(64)
         self.pool4 = nn.MaxPool3d(kernel_size=(1, 2, 2))
-        self.fc1 = nn.Linear(1024, 512)
+        self.fc1 = nn.Linear(8192, 156)
         self.drop = nn.Dropout(0.5)
-        self.fc2 = nn.Linear(512, 160)
+        self.fc2 = nn.Linear(156, 2)
         # get_summary(self)
 
-    def forward(self, x):
-        x, _ = self.convlstm1(x)
+    def forward(self, x, hidden_states_input):
+        hidden_states = []
+
+        h1 = hidden_states_input[0]
+
+        x, h1 = self.convlstm1(x, h1)
         x = x[0].permute(0, 2, 1, 3, 4)
         x = self.bn1(x)
         x = F.relu(x)
         x = self.pool1(x)
+        hidden_states.append(h1)
 
 
+        h2 = hidden_states_input[1]
         x = x.permute(0, 2, 1, 3, 4)
-        x, _ = self.convlstm2(x)
+        x, h2 = self.convlstm2(x, h2)
         x = x[0].permute(0, 2, 1, 3, 4)
         x = self.bn2(x)
         x = F.relu(x)
         x = self.pool2(x)
-
+        hidden_states.append(h2)
+        
+        h3 = hidden_states_input[2]
         x = x.permute(0, 2, 1, 3, 4)
-        x, _ = self.convlstm3(x)
+        x, h3 = self.convlstm3(x, h3)
         x = x[0].permute(0, 2, 1, 3, 4)
         x = self.bn3(x)
         x = F.relu(x)
         x = self.pool3(x)
+        hidden_states.append(h3)
 
+        h4 = hidden_states_input[3]
         x = x.permute(0, 2, 1, 3, 4)
-        x, _ = self.convlstm4(x)
+        x, h4 = self.convlstm4(x, h4)
         x = x[0].permute(0, 2, 1, 3, 4)
         x = self.bn4(x)
         x = F.relu(x)
         x = self.pool4(x)
+        hidden_states.append(h4)
 
         # Flatten and apply LSTM layer
-        x_list=[]
         b, c, seq, h, w = x.size()
-        for t in range(seq): 
-            data = x[:,:,t,:,:]
-            data = data.reshape(b, -1)
-            data = F.relu(self.fc1(data))
-            data = self.drop(data)
-            data = self.fc2(data)
-            x_list.append(data)
-        y = torch.stack(x_list, dim =0)
-        y = y.permute(1, 0, 2)
-        return y
+        data = x.reshape(b, -1)
+        data = F.relu(self.fc1(data))
+        data = self.drop(data)
+        data = self.fc2(data)
+        return data
 
 # if __name__ == "__main__":
 #     import torch

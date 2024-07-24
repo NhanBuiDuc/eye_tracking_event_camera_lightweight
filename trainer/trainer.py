@@ -7,6 +7,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 import csv
 import numpy as np
 from pathlib import Path
+from tqdm import tqdm
 
 class Trainer(ABC):
     """
@@ -49,7 +50,7 @@ class Trainer(ABC):
 
     def train(self, max_epochs):
         for epoch in range(self.epochs_run, max_epochs):
-            self._run_epoch(epoch)
+            self._run_epoch(epoch, max_epochs)
             self._save_snapshot(epoch)
 
     def backward(self, loss):
@@ -74,39 +75,41 @@ class Trainer(ABC):
             
     def save_numpy(self, log_dict, directory):
         os.makedirs(directory, exist_ok=True)  # Create directory if it doesn't exist
-        
+
         for key, value in log_dict.items():
+
+            # Save the concatenated tensor
             filename = os.path.join(directory, f"{key}.npy")
-            if isinstance(value, torch.Tensor):
-                value = value.cpu().detach().numpy()
             np.save(filename, value)
+
             
-    def _run_epoch(self, epoch):
+    def _run_epoch(self, epoch, max_epochs):
         self.model.train()
         print(f"[Epoch {epoch} | Batchsize: {self.train_data_loader.batch_size} | Steps: {len(self.train_data_loader)}")
         # self.train_data_loader.sampler.set_epoch(epoch)
         outputs = []
         targets = []
         # gpus = []
-        for source, target in (self.train_data_loader):
+        for source, target in tqdm(self.train_data_loader):
             b, seq_len, c = target.shape
             timestep_outputs = []
 
             source = source.to(self.gpu_id)
             target = target.to(self.gpu_id)
             self.optimizer.zero_grad()
+            data = source.clone()
             for t in range(seq_len):
-                data = source[:, t, :, :, :]
-                data = data.unsqueeze(1)
+                
                 if t == 0:
-                    output, hidden_states = self.model(data, None)
+                    out, hidden_states = self.model(data[:, t, :, :, :].unsqueeze(1), None)
                 else:
-                    output, hidden_states = self.model(data, hidden_states)
+                    out, hidden_states = self.model(data[:, t, :, :, :].unsqueeze(1), hidden_states)
+                    
+                timestep_outputs.append(out)
 
-                timestep_outputs.append(output)
             # Convert timestep_outputs to a tensor
-            timestep_outputs_tensor = torch.stack(timestep_outputs)
-            output = self.reshape(timestep_outputs_tensor, [target.shape])
+            output = torch.stack(timestep_outputs)
+            output = self.reshape(output, [target.shape])
             outputs.append(output.cpu().detach().numpy())
             targets.append(target.cpu().detach().numpy())
             # gpus.append(self.gpu_id)
@@ -119,13 +122,16 @@ class Trainer(ABC):
 
             self.backward(total_loss)
             self.optimizer.step()
-        if epoch == 0:
-            log_dict = {
-                f"gpu_{self.gpu_id}_output": outputs,
-                f"gpu_{self.gpu_id}_target": targets,
-            }
-            path = Path("cache/train/")
-            self.save_numpy(log_dict, path)
+        # Concatenate all outputs and targets
+        outputs = np.concatenate(outputs, axis=0)
+        targets = np.concatenate(targets, axis=0)
+
+        log_dict = {
+            f"gpu_{self.gpu_id}_output": outputs,
+            f"gpu_{self.gpu_id}_target": targets,
+        }
+        path = Path("cache/train/")
+        self.save_numpy(log_dict, path)
 
     def evaluate(self):
         self.model.eval()
@@ -139,15 +145,26 @@ class Trainer(ABC):
         # loss_dict_accumulator = {}  # To accumulate total losses by type
         with torch.no_grad():
             val_loss = 0
-            for source, target, avg_dt in (self.val_data_loader):
+            for source, target, avg_dt in tqdm(self.val_data_loader):
                 source = source.to(self.gpu_id)
                 target = target.to(self.gpu_id)
-                output = self.model(source)
+                for t in range(seq_len):
+                    data = source[:, t, :, :, :]
+                    data = data.unsqueeze(1)
+                    if t == 0:
+                        output, hidden_states = self.model(data, None)
+                    else:
+                        output, hidden_states = self.model(data, hidden_states)
 
+                    timestep_outputs.append(output)
+
+                timestep_outputs_tensor = torch.stack(timestep_outputs)
+                output = self.reshape(timestep_outputs_tensor, [target.shape]) 
                 outputs.append(output.cpu().detach().numpy())
                 targets.append(target.cpu().detach().numpy())
                 # gpus.append(self.gpu_id)
-
+        outputs = np.concatenate(outputs, axis=0)
+        targets = np.concatenate(targets, axis=0)
         log_dict = {
             f"gpu_{self.gpu_id}_output": outputs,
             f"gpu_{self.gpu_id}_target": targets,
@@ -167,15 +184,26 @@ class Trainer(ABC):
         # loss_dict_accumulator = {}  # To accumulate total losses by type
         with torch.no_grad():
             val_loss = 0
-            for source, target, avg_dt in (self.test_data_loader):
+            for source, target, avg_dt in tqdm(self.test_data_loader):
                 source = source.to(self.gpu_id)
                 target = target.to(self.gpu_id)
-                output = self.model(source)
+                for t in range(seq_len):
+                    data = source[:, t, :, :, :]
+                    data = data.unsqueeze(1)
+                    if t == 0:
+                        output, hidden_states = self.model(data, None)
+                    else:
+                        output, hidden_states = self.model(data, hidden_states)
 
+                    timestep_outputs.append(output)
+                    
+                timestep_outputs_tensor = torch.stack(timestep_outputs, requires_grad=True)
+                output = self.reshape(timestep_outputs_tensor, [target.shape])
                 outputs.append(output.cpu().detach().numpy())
                 targets.append(target.cpu().detach().numpy())
                 # gpus.append(self.gpu_id)
-
+        outputs = np.concatenate(outputs, axis=0)
+        targets = np.concatenate(targets, axis=0)
         log_dict = {
             f"gpu_{self.gpu_id}_output": outputs,
             f"gpu_{self.gpu_id}_target": targets,

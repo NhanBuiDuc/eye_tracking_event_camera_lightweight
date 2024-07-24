@@ -81,7 +81,7 @@ def create_losses_sequence(losses: list, dataset_params: dict, training_params: 
     return losses_sequence
 
 def main(train_dataset, val_dataset, test_dataset, dataset_params, training_params):
-    config_path = "config/evb_eye.json"
+    config_path = "config/evb_eye_fast.json"
 
     arch_name = "LSTM"
     optimizer =  training_params["optimizer"]
@@ -90,6 +90,7 @@ def main(train_dataset, val_dataset, test_dataset, dataset_params, training_para
     num_epochs = training_params["num_epochs"]
     metrics = training_params["metrics"]
     losses = training_params["losses"]
+    device = training_params["device"]
     save_every = 1
     snapshot_path = "checkpoints"
     # Create a Path object
@@ -150,10 +151,9 @@ def main(train_dataset, val_dataset, test_dataset, dataset_params, training_para
     dataloader_list.append(val_dataloader)
     dataloader_list.append(test_dataloader)
     # train_dataloader = prepare_dataloader(train_dataset, batch_size)
-    trainer = Trainer(model, "cuda:0", dataloader_list, optimizer, scheduler, criterions_sequence, metrics_sequence, save_every, snapshot_path)
+    trainer = Trainer(model, device, dataloader_list, optimizer, scheduler, criterions_sequence, metrics_sequence, save_every, snapshot_path)
     trainer.train(num_epochs)
     trainer.evaluate()
-    destroy_process_group()
 
 if __name__ == "__main__":
     # Example function to load your dataset, model, and optimizer
@@ -161,7 +161,7 @@ if __name__ == "__main__":
     torch.autograd.set_detect_anomaly(True)
     torch.multiprocessing.set_start_method("spawn", force=True)
     torch.set_default_dtype(torch.float32)
-    torch.set_default_device("cuda")
+    torch.set_default_device("cuda:2")
     torch.set_num_threads(10)
     torch.set_num_interop_threads(10)
 

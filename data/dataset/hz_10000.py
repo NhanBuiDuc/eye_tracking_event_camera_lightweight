@@ -243,7 +243,7 @@ class DatasetHz10000:
                 setattr(self, sub_key, sub_value)
 
         if self.split == "train":
-            train_val_idx = list(range(26, 27))
+            train_val_idx = list(range(self.train_set_range[0], self.train_set_range[1]))
             #random.shuffle(train_val_idxs)
             for idx in self.val_set_idx:
                 if idx in train_val_idx:
@@ -283,21 +283,31 @@ class DatasetHz10000:
 
         while(end_time < tab_last["timestamp"]):
             idx = find_closest_index(label, [x_label_at_index, y_label_at_index], end_time, return_last=False) - 2
-            indexes.append(idx)
-            indexes.append(idx + 1)
-            indexes.append(idx + 2)
-            indexes.append(idx + 3)
-            indexes.append(idx + 4)
-            idx = idx + 4
-
             try:
-                x_label_at_index = label["row"].iloc[idx]
-                y_label_at_index = label["col"].iloc[idx]
                 start_time = label["timestamp"].iloc[idx]
                 end_time = start_time + self.fixed_window_dt * self.num_bins
-            except IndexError:
-                print("Index out of bounds. Breaking the loop.")
-                break
+                if(end_time < tab_last["timestamp"]):
+                    indexes.append(idx)
+            except:
+                pass
+            try:
+                start_time = label["timestamp"].iloc[idx+1]
+                end_time = start_time + self.fixed_window_dt * self.num_bins
+                if(end_time < tab_last["timestamp"]):
+                    indexes.append(idx+1)
+            except:
+                pass
+            # start_time = label["timestamp"].iloc[idx+2]
+            # end_time = start_time + self.fixed_window_dt * self.num_bins
+            # if(end_time < tab_last["timestamp"]):
+            #     indexes.append(idx+2)
+            try:
+                start_time = label["timestamp"].iloc[idx+2]
+                end_time = start_time + self.fixed_window_dt * self.num_bins
+                if(end_time < tab_last["timestamp"]):
+                    indexes.append(idx+2)
+            except:
+                pass
         return indexes
             
     def prepare_unstructured_data(self):
@@ -329,16 +339,17 @@ class DatasetHz10000:
 
             left_eye_indexes = self.find_index_list(left_labels)
             right_eye_indexes = self.find_index_list(right_labels)
+            num_sample = self.num_sample_each_user
             self.all_data[idx] = {
                 "left_eye_normalized_data": left_eye_data,
                 "right_eye_normalized_data": right_eye_data,
-                "left_indexes": left_eye_indexes,
-                "right_eye_indexes": right_eye_indexes,
+                "left_indexes": left_eye_indexes[:num_sample],
+                "right_eye_indexes": right_eye_indexes[:num_sample],
                 "left_eye_raw_label_dataframe": left_labels,
                 "right_eye_raw_label_dataframe": right_labels,
-                "length": length_index + len(left_eye_indexes) + len(right_eye_indexes)
+                "length": length_index + len(left_eye_indexes[:num_sample]) + len(right_eye_indexes[:num_sample])
             }
-            length_index = length_index + len(left_eye_indexes) + len(right_eye_indexes)
+            length_index = length_index + len(left_eye_indexes[:num_sample]) + len(right_eye_indexes[:num_sample])
             self.length_index[idx] = length_index
 
     def load_data(self):
@@ -368,7 +379,7 @@ class DatasetHz10000:
             raise IndexError("Index out of range")
 
         relative_index = index - previous_length
-
+        print("Train User ", user_idx)
         left_indexes = self.all_data[user_idx]["left_indexes"]
         right_indexes = self.all_data[user_idx]["right_eye_indexes"]
 
@@ -587,25 +598,36 @@ class DatasetHz10000:
             idx = np.searchsorted(label["timestamp"], fixed_tmp, side="left")
 
             # Weighted interpolation
-            t0 = label["timestamp"].iloc[idx - 1]
-            t1 = label["timestamp"].iloc[idx]
+            try:
+                t0 = label["timestamp"].iloc[idx - 1]
+                t1 = label["timestamp"].iloc[idx]
 
-            weight0 = (t1 - fixed_tmp) / (t1 - t0)
-            weight1 = (fixed_tmp - t0) / (t1 - t0)
+                weight0 = (t1 - fixed_tmp) / (t1 - t0)
+                weight1 = (fixed_tmp - t0) / (t1 - t0)
 
-            x_axis.append(
-                int(
-                    label.iloc[idx - 1]["row"] * weight0
-                    + label.iloc[idx]["row"] * weight1
+                x_axis.append(
+                    int(
+                        label.iloc[idx - 1]["row"] * weight0
+                        + label.iloc[idx]["row"] * weight1
+                    )
                 )
-            )
-            y_axis.append(
-                int(
-                    label.iloc[idx - 1]["col"] * weight0
-                    + label.iloc[idx]["col"] * weight1
+                y_axis.append(
+                    int(
+                        label.iloc[idx - 1]["col"] * weight0
+                        + label.iloc[idx]["col"] * weight1
+                    )
                 )
-            )
-
+            except:
+                x_axis.append(
+                int(
+                    label.iloc[idx - 1]["row"]
+                )
+                )
+                y_axis.append(
+                    int(
+                        label.iloc[idx - 1]["col"] * weight0
+                    )
+                )
             # slice
             t = evs_t[start_idx:][evs_t[start_idx:] <= fixed_tmp]
             # if t.shape[0] == 0:

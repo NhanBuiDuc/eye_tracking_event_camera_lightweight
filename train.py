@@ -14,7 +14,7 @@ import torch.distributed as dist
 import torch.multiprocessing as mp
 from metrics.metric_base import Metric, MetricSequence
 from metrics.mean_squared_error import MeanSquaredError
-
+import torch.nn as nn
 from loss.loss_base import Loss, LossSequence
 from loss.YoloLoss import YoloLoss
 from model.simple_convlstm import SimpleConvLSTM
@@ -78,6 +78,8 @@ def create_losses_sequence(losses: list, dataset_params: dict, training_params: 
     for loss in losses:
         if loss == "yolo_loss":
             results.append(YoloLoss(dataset_params, training_params))
+        if loss == "mean_squared_error":
+            results.append(nn.MSELoss())
     losses_sequence = LossSequence(results)
     return losses_sequence
 
@@ -145,15 +147,15 @@ def distributed_job(rank, world_size, train_dataset, val_dataset, test_dataset, 
 
     train_dataloader = prepare_dataloader(train_dataset, batch_size)
     val_dataloader = prepare_dataloader(val_dataset, batch_size)
-    test_dataloader = prepare_dataloader(test_dataset, batch_size)
+    # test_dataloader = prepare_dataloader(test_dataset, batch_size)
     dataloader_list.append(train_dataloader)
     dataloader_list.append(val_dataloader)
-    dataloader_list.append(test_dataloader)
+    dataloader_list.append(None)
     # train_dataloader = prepare_dataloader(train_dataset, batch_size)
     trainer = DistributedTrainerBase(model, rank, dataloader_list, optimizer, scheduler, criterions_sequence, metrics_sequence, save_every, snapshot_path)
     trainer.train(num_epochs)
     trainer.evaluate()
-    trainer.test()
+    # trainer.test()
     destroy_process_group()
 
 if __name__ == "__main__":
@@ -167,7 +169,7 @@ if __name__ == "__main__":
     torch.set_num_interop_threads(10)
     # dist.init_process_group("nccl")
     # rank = dist.get_rank()
-    gpus_list = [2, 3, 4]
+    gpus_list = [3, 4]
     n_gpus = torch.cuda.device_count()
     # print(f"Start running basic DDP example on rank {rank}.")
     os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(map(str, gpus_list)) # Use GPUs 0 and 1
@@ -178,7 +180,7 @@ if __name__ == "__main__":
     # setup_ddp(gpu_indices = [0, 1, 2], rank = rank, world_size)
     # create model and move it to GPU with id rank
     short_train = False
-    config_path = "config/evb_eye.json"
+    config_path = "config/evb_eye_fast.json"
     if config_path is not None:
         with open(config_path, 'r') as f:
             config_params = json.load(f)
@@ -186,7 +188,7 @@ if __name__ == "__main__":
     training_params = config_params["training_params"]
     train_dataset = DatasetHz10000(split="train", config_params=config_params)  # Example dataset
     val_dataset = DatasetHz10000(split="val", config_params=config_params)  # Example dataset
-    test_dataset = DatasetHz10000(split="test", config_params=config_params)  # Example dataset
+    # test_dataset = DatasetHz10000(split="test", config_params=config_params)  # Example dataset
     
     train_dataset.prepare_unstructured_data()
 
@@ -195,4 +197,4 @@ if __name__ == "__main__":
         val_dataset = torch.utils.data.Subset(val_dataset, range(100))
         test_dataset = torch.utils.data.Subset(val_dataset, range(100))
 
-    mp.spawn(distributed_job, args=(world_size, train_dataset, val_dataset, test_dataset, dataset_params, training_params), nprocs=world_size)
+    mp.spawn(distributed_job, args=(world_size, train_dataset, val_dataset, None, dataset_params, training_params), nprocs=world_size)

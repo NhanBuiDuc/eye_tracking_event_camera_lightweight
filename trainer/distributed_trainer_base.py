@@ -7,7 +7,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 import csv
 import numpy as np
 from pathlib import Path
-
+import torch.nn as nn
 class DistributedTrainerBase(ABC):
     """
     An abstract base class for distributed training across multiple GPUs.
@@ -48,7 +48,8 @@ class DistributedTrainerBase(ABC):
         self.snapshot_path = snapshot_path
         self.epochs_run = 0
         # self.model = self.model.to(self.gpu_id)
-
+        self.criterions = nn.MSELoss()
+        
     def train(self, max_epochs):
         for epoch in range(self.epochs_run, max_epochs):
             self._run_epoch(epoch)
@@ -56,7 +57,7 @@ class DistributedTrainerBase(ABC):
                 self._save_snapshot(epoch)
 
     def backward(self, loss):
-        loss.backward()
+        loss.backward(retain_graph=True)
 
     def save_csv(self, log_dict, path):
         path.parent.mkdir(parents=True, exist_ok=True)  # Ensure the directory exists
@@ -94,34 +95,31 @@ class DistributedTrainerBase(ABC):
         targets = []
         # gpus = []
         for source, target in (self.train_data_loader):
-            b, t, c = target.shape
+            b, seq_len, c = target.shape
             timestep_outputs = []
 
             source = source.to(self.gpu_id)
             target = target.to(self.gpu_id)
             self.optimizer.zero_grad()
-
+            # Pre-allocate the output tensor
+            timestep_outputs = torch.empty((b, seq_len, 2), device=self.gpu_id)
+            
+            # Initial hidden state (if needed by your model)
+            hidden_states = None
+            
             for t in range(seq_len):
-                data = source[:, t, :, :, :]
-                data = data.unsqueeze(1)
-                if t == 0:
-                    output, hidden_states = self.model(data, None)
-                else:
-                    output, hidden_states = self.model(data, hidden_states)
-                    
-                timestep_outputs.append(output)
-            # Convert timestep_outputs to a tensor
-            timestep_outputs_tensor = torch.stack(timestep_outputs)
-            output = self.reshape(timestep_outputs_tensor, [target.shape])
-            outputs.append(output.cpu().detach().numpy())
+                out, hidden_states = self.model(source[:, t, :, :, :].unsqueeze(1), hidden_states)
+                timestep_outputs[:, t, :] = out.squeeze(1)  # Adjust indexing as needed
+
+            outputs.append(timestep_outputs.cpu().detach().numpy())
             targets.append(target.cpu().detach().numpy())
             # gpus.append(self.gpu_id)
 
-            total_loss, loss_dict = self.criterions(output, target)
+            total_loss = self.criterions(timestep_outputs, target)
 
-            # if self.gpu_id == 0:
-            for loss in loss_dict:
-                print(f"{(loss)} Train Loss: ", loss_dict[loss])
+            # # if self.gpu_id == 0:
+            # for loss in loss_dict:
+            #     print(f"{(loss)} Train Loss: ", loss_dict[loss])
 
             self.backward(total_loss)
             self.optimizer.step()
@@ -146,13 +144,24 @@ class DistributedTrainerBase(ABC):
         with torch.no_grad():
             val_loss = 0
             for source, target in (self.val_data_loader):
+                b, seq_len, c = target.shape
                 source = source.to(self.gpu_id)
                 target = target.to(self.gpu_id)
-                output = self.model(source)
+                for t in range(seq_len):
+                    data = source[:, t, :, :, :].clone()
+                    data = data.unsqueeze(1)
+                    if t == 0:
+                        output, hidden_states = self.model(data, None)
+                    else:
+                        output, hidden_states = self.model(data, hidden_states)
+                        
+                    timestep_outputs.append(output)
+                # Convert timestep_outputs to a tensor
+                output = torch.stack(timestep_outputs)
+                output = output.reshape(*target.shape)
 
                 outputs.append(output.cpu().detach().numpy())
                 targets.append(target.cpu().detach().numpy())
-                # gpus.append(self.gpu_id)
 
         log_dict = {
             f"gpu_{self.gpu_id}_output": outputs,
@@ -172,15 +181,26 @@ class DistributedTrainerBase(ABC):
         # total_val_loss = 0.0
         # loss_dict_accumulator = {}  # To accumulate total losses by type
         with torch.no_grad():
-            val_loss = 0
-            for source, target in (self.test_data_loader):
+            test_loss = 0
+            for source, target in (self.val_data_loader):
+                b, seq_len, c = target.shape
                 source = source.to(self.gpu_id)
                 target = target.to(self.gpu_id)
-                output = self.model(source)
+                for t in range(seq_len):
+                    data = source[:, t, :, :, :].clone()
+                    data = data.unsqueeze(1)
+                    if t == 0:
+                        output, hidden_states = self.model(data, None)
+                    else:
+                        output, hidden_states = self.model(data, hidden_states)
+                        
+                    timestep_outputs.append(output)
+                # Convert timestep_outputs to a tensor
+                output = torch.stack(timestep_outputs)
+                output = output.reshape(*target.shape)
 
                 outputs.append(output.cpu().detach().numpy())
                 targets.append(target.cpu().detach().numpy())
-                # gpus.append(self.gpu_id)
 
         log_dict = {
             f"gpu_{self.gpu_id}_output": outputs,

@@ -19,6 +19,7 @@ import torch.nn as nn
 from loss.loss_base import Loss, LossSequence
 from loss.YoloLoss import YoloLoss
 from model.simple_convlstm import SimpleConvLSTM
+import multiprocessing
 
 def setup_ddp(rank, world_size):
     # Set necessary environment variables
@@ -81,6 +82,12 @@ def create_losses_sequence(losses: list, dataset_params: dict, training_params: 
     return losses_sequence
 
 def main(train_dataset, val_dataset, test_dataset, dataset_params, training_params):
+
+    # # Create a thread to run the load_cached_data method
+    # thread = threading.Thread(target=val_dataset.load_cached_data)
+
+    # # Start the thread
+    # thread.start()
     config_path = "config/evb_eye_fast.json"
 
     arch_name = "LSTM"
@@ -153,7 +160,8 @@ def main(train_dataset, val_dataset, test_dataset, dataset_params, training_para
     # train_dataloader = prepare_dataloader(train_dataset, batch_size)
     trainer = Trainer(model, device, dataloader_list, optimizer, scheduler, criterions_sequence, metrics_sequence, save_every, snapshot_path)
     trainer.train(num_epochs)
-    trainer.evaluate()
+    # thread.join()
+    # trainer.evaluate()
 
 if __name__ == "__main__":
     # Example function to load your dataset, model, and optimizer
@@ -175,9 +183,13 @@ if __name__ == "__main__":
     train_dataset = DatasetHz10000(split="train", config_params=config_params)  # Example dataset
     val_dataset = DatasetHz10000(split="val", config_params=config_params)  # Example dataset
     test_dataset = DatasetHz10000(split="test", config_params=config_params)  # Example dataset
-    
-    train_dataset.prepare_unstructured_data()
-
+    cache = dataset_params["use_cache"]
+    if cache == False:
+        train_dataset.prepare_unstructured_data()
+        val_dataset.prepare_unstructured_data()
+    else:
+        index = [1, 2, 3, 4, 5]
+        train_dataset.load_cached_data(index)
     if short_train:
         train_dataset = torch.utils.data.Subset(train_dataset, range(100))
         val_dataset = torch.utils.data.Subset(val_dataset, range(100))

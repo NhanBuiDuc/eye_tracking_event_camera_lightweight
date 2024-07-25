@@ -31,84 +31,6 @@ import multiprocessing as mp
 from functools import partial
 from multiprocessing import Queue, Process
 from tqdm import tqdm
-import multiprocessing as mp
-import numpy as np
-import concurrent.futures
-from threading import Lock
-import multiprocessing
-def process_and_save_user_data(args):
-        idx, self = args
-        print(f"Preparing index for user {idx}")
-        self.all_data[idx] = {}
-        
-        left_frame_stack, left_event_stack, left_labels = self.collect_data(idx, 0)
-        right_frame_stack, right_event_stack, right_labels = self.collect_data(idx, 1)
-
-        left_pols, left_xs, left_ys, left_ts = extract_event_components(left_event_stack)
-        right_pols, right_xs, right_ys, right_ts = extract_event_components(right_event_stack)
-
-        left_eye_data = make_structured_array(left_ts, left_xs, left_ys, left_pols, dtype=events_struct)
-        right_eye_data = make_structured_array(right_ts, right_xs, right_ys, right_pols, dtype=events_struct)
-
-        left_eye_data = self.input_transform(left_eye_data)
-        right_eye_data = self.input_transform(right_eye_data)
-
-        left_eye_indexes = self.find_index_list(left_labels)
-        right_eye_indexes = self.find_index_list(right_labels)
-
-        data_list = []
-        label_list = []
-
-        for timestamp_index in tqdm(left_eye_indexes):
-            data, label = self.get_item(left_eye_data, left_labels, timestamp_index)
-            data_list.append(data)
-            label_list.append(label)
-
-        for timestamp_index in tqdm(right_eye_indexes):
-            data, label = self.get_item(right_eye_data, right_labels, timestamp_index)
-            data_list.append(data)
-            label_list.append(label)
-
-        data_array = np.array(data_list)
-        label_array = np.array(label_list)
-
-        np.save(f'{self.cache_data_dir}/{idx}_data.npy', data_array)
-        np.save(f'{self.cache_data_dir}/{idx}_labels.npy', label_array)
-
-        return idx
-        
-def find_closest_index(df, target, start_time, end_time = None, return_last = False):
-    # Create a copy of the DataFrame
-    df = df.copy()
-    
-    # Extract x and y from the target list
-    target_x, target_y = target
-    
-    # Ensure columns are numeric if necessary
-    df['row'] = pd.to_numeric(df['row'], errors='coerce')
-    df['col'] = pd.to_numeric(df['col'], errors='coerce')
-    
-    # Filter to include only rows with a timestamp larger than the given timestep
-    df_filtered = df[df['timestamp'] > start_time]
-    if end_time != None:
-        df_filtered = df[df['timestamp'] < end_time]        
-    # Ensure that we have rows after timestamp filtering
-    if df_filtered.empty:
-        return None
-    
-    # Find rows where either the row or col column differs from target_x or target_y
-    df_filtered = df_filtered[
-        (df_filtered['row'] != target_x) | (df_filtered['col'] != target_y)
-    ]
-    
-    # If no rows meet the criteria, return None
-    if df_filtered.empty:
-        return None
-    if return_last == True:
-        # Return the index of the first row that meets the criteria
-        return df_filtered.index[-1]
-    return df_filtered.index[0]
-
 events_struct = np.dtype([
     ('t', np.uint32),
     ('x', np.uint16),
@@ -169,6 +91,141 @@ def get_path_info(path):
     return {'index': index, 'row': row, 'col': col, 'stimulus_type': stimulus_type,
             'timestamp': timestamp}
 
+def find_closest_index(df, target, start_time, end_time = None, return_last = False):
+    # Create a copy of the DataFrame
+    df = df.copy()
+    
+    # Extract x and y from the target list
+    target_x, target_y = target
+    
+    # Ensure columns are numeric if necessary
+    df['row'] = pd.to_numeric(df['row'], errors='coerce')
+    df['col'] = pd.to_numeric(df['col'], errors='coerce')
+    
+    # Filter to include only rows with a timestamp larger than the given timestep
+    df_filtered = df[df['timestamp'] > start_time]
+    if end_time != None:
+        df_filtered = df[df['timestamp'] < end_time]        
+    # Ensure that we have rows after timestamp filtering
+    if df_filtered.empty:
+        return None
+    
+    # Find rows where either the row or col column differs from target_x or target_y
+    df_filtered = df_filtered[
+        (df_filtered['row'] != target_x) | (df_filtered['col'] != target_y)
+    ]
+    
+    # If no rows meet the criteria, return None
+    if df_filtered.empty:
+        return None
+    if return_last == True:
+        # Return the index of the first row that meets the criteria
+        return df_filtered.index[-1]
+    return df_filtered.index[0]
+    
+class GetItemStrategy(ABC):
+    @abstractmethod
+    def get_item(self, dataset, index):
+        pass
+
+class TonicTransformGetItemStrategy(GetItemStrategy):
+    def get_item(self, events, labels, dataset, transforms):
+
+        tmp_struct = events
+        for transform in transforms:
+            if transform == "time_jitter":
+                tj_fn = tonic.transforms.TimeJitter(std=100, clip_negative=True)
+                tmp_struct = tj_fn(tmp_struct)
+
+            if transform == "uniform_noise":
+                un_fn = tonic.transforms.UniformNoise(
+                    sensor_size=(dataset.img_width, dataset.img_height, dataset.input_channel),
+                    n=1000,
+                )
+                tmp_struct = un_fn(tmp_struct)
+
+            if transform == "event_drop":
+                tj_fn = tonic.transforms.DropEvent(p = 1 / 100)
+                tmp_struct = tj_fn(tmp_struct)
+        
+        events = {
+            "xy": np.hstack(
+                [tmp_struct["x"].reshape(-1, 1), tmp_struct["y"].reshape(-1, 1)]
+            ),
+            "p": tmp_struct["p"] * 1,
+            "t": tmp_struct["t"],
+        }
+
+        event_tensor = events.float()
+        labels_tensor = labels.float()
+        return event_tensor, labels_tensor, dataset.fixed_window_dt
+
+class StaticWindowGetItemStrategy(GetItemStrategy):
+    def get_item(self, events, labels, dataset, transforms):
+        
+        tmp_struct = events
+        for transform in transforms:
+            if transform == "time_jitter":
+                tj_fn = tonic.transforms.TimeJitter(std=100, clip_negative=True)
+                tmp_struct = tj_fn(tmp_struct)
+
+            if transform == "uniform_noise":
+                un_fn = tonic.transforms.UniformNoise(
+                    sensor_size=(dataset.img_width, dataset.img_height, dataset.input_channel),
+                    n=1000,
+                )
+                tmp_struct = un_fn(tmp_struct)
+
+            if transform == "event_drop":
+                tj_fn = tonic.transforms.DropEvent(p=1 / 100)
+                tmp_struct = tj_fn(tmp_struct)
+
+        events = {
+            "xy": np.hstack(
+                [tmp_struct["x"].reshape(-1, 1), tmp_struct["y"].reshape(-1, 1)]
+            ),
+            "p": tmp_struct["pol"] * 1,
+            "t": tmp_struct["t"],
+        }
+        events, labels = dataset.load_static_window(events, labels)
+        # event_tensor = events.float()
+        # labels = np.concatenate(labels, axis=0)
+        return events, labels, dataset.fixed_window_dt
+
+class DynamicWindowGetItemStrategy(GetItemStrategy):
+    def get_item(self, labels, events, dataset, transforms):
+        
+        tmp_struct = make_structured_array(
+            events["xy"][:, 0], events["xy"][:, 1], events["t"], events["p"]
+        )
+        for transform in transforms:
+            if transform == "time_jitter":
+                tj_fn = tonic.transforms.TimeJitter(std=100, clip_negative=True)
+                tmp_struct = tj_fn(tmp_struct)
+
+            if transform == "uniform_noise":
+                un_fn = tonic.transforms.UniformNoise(
+                    sensor_size=(self.img_width, self.img_height, self.input_channel),
+                    n=1000,
+                )
+                tmp_struct = un_fn(tmp_struct)
+
+            if transform == "event_drop":
+                tj_fn = tonic.transforms.DropEvent(p=1 / 100)
+                tmp_struct = tj_fn(tmp_struct)
+
+        events = {
+            "xy": np.hstack(
+                [tmp_struct["x"].reshape(-1, 1), tmp_struct["y"].reshape(-1, 1)]
+            ),
+            "p": tmp_struct["p"] * 1,
+            "t": tmp_struct["t"],
+        }
+        events, labels, avg_dt = dataset.load_dynamic_window(events, labels)
+        # event_tensor = events.float()
+        # labels_tensor = labels.float()
+        return events, labels, avg_dt
+
 class DatasetHz10000:
     def __init__(
         self,
@@ -195,6 +252,10 @@ class DatasetHz10000:
         else:
             self.data_idx = self.val_set_idx
 
+        if self.get_item_strategy == "static_window":
+            self.get_item_strategy = StaticWindowGetItemStrategy()
+        elif self.get_item_strategy == "dynamic_window":
+            self.get_item_strategy = DynamicWindowGetItemStrategy()
         # Create the directory if it doesn't exist
         os.makedirs(self.cache_data_dir, exist_ok=True)
 
@@ -204,17 +265,7 @@ class DatasetHz10000:
         self.merged_data = []
         self.merged_labels = []
         self.avg_dt = 0
-
-    def prepare_unstructured_data(self, data_idx=None):
-        if data_idx is None:
-            data_idx = self.data_idx
-        pool = mp.Pool(mp.cpu_count())
-        args = [(idx, self) for idx in data_idx]
-        for idx in pool.imap_unordered(process_and_save_user_data, args):
-            print(f"Finished processing and saving data for user {idx}")
-        pool.close()
-        pool.join()
-
+        
     def find_index_list(self, label):
 
         indexes = []
@@ -258,59 +309,143 @@ class DatasetHz10000:
             except:
                 pass
         return indexes
-
-    def _load_file(self, data_file, label_file):
-        print("Load ", data_file)
-        user_data = np.load(data_file)
-        user_labels = np.load(label_file)
-        return user_data, user_labels
-
-    def load_cached_data(self):
-        data_files = [os.path.join(self.cache_data_dir, f"{index}_data.npy") for index in self.data_idx]
-        label_files = [os.path.join(self.cache_data_dir, f"{index}_labels.npy") for index in self.data_idx]
-
-        with multiprocessing.Pool() as pool:
-            results = pool.starmap(self._load_file, zip(data_files, label_files))
-
-        all_data = [res[0] for res in results]
-        all_labels = [res[1] for res in results]
-
-        self.all_event = np.concatenate(all_data)
-        self.all_label = np.concatenate(all_labels)
-
-    # def load_cached_data(self):
-    #     data_files = glob.glob(os.path.join(self.cache_data_dir, '*_data.npy'))
-    #     label_files = glob.glob(os.path.join(self.cache_data_dir, '*_labels.npy'))
-        
-    #     data_files.sort()
-    #     label_files.sort()
-        
-    #     all_data = []
-    #     all_labels = []
-        
-    #     for data_file, label_file in zip(data_files, label_files):
-    #         user_data = np.load(data_file)
-    #         user_labels = np.load(label_file)
             
-    #         all_data.append(user_data)
-    #         all_labels.append(user_labels)
-        
-    #     self.all_event = np.concatenate(all_data)
-    #     self.all_label = np.concatenate(all_labels)
+    def prepare_unstructured_data(self, data_idx = None):
+        if data_idx is None:
+            data_idx = self.data_idx
+
+        length_index = 0
+        for idx in data_idx:
+            print(f"Preparing index for user {idx}")
+            # Initialize dictionaries for each idx
+            self.all_data[idx] = {}        
+            # self.transform, self.target_transform = get_transforms(self.dataset_params, self.training_params)
+            left_frame_stack, left_event_stack, left_labels = self.collect_data(idx, 0)
+            right_frame_stack, right_event_stack, right_labels = self.collect_data(idx, 1)
+            
+            left_pols, left_xs, left_ys, left_ts = extract_event_components(left_event_stack)
+            right_pols, right_xs, right_ys, right_ts = extract_event_components(right_event_stack)
+            max_xs, min_xs = max(left_xs), min(left_xs)
+            max_ys, min_ys = max(left_ys), min(left_ys)
+            max_ts, min_ts = max(left_ts), min(left_ts)
+            print(f"User: {idx}")
+            print(f'Max x: {max_xs}, Min x: {min_xs}')
+            print(f'Max y: {max_ys}, Min y: {min_ys}')
+            print(f'Max t: {max_ts}, Min t: {min_ts}')
+            print(f'Max row label: {left_labels["row"].max()}, Max column label: {left_labels["col"].max()}')
+
+            left_eye_data = make_structured_array(left_ts, left_xs, left_ys, left_pols, dtype=events_struct)
+            right_eye_data = make_structured_array(right_ts, right_xs, right_ys, right_pols, dtype=events_struct)
+            # normalize
+            left_eye_data = self.input_transform(left_eye_data)
+            right_eye_data = self.input_transform(right_eye_data)
+
+            left_eye_indexes = self.find_index_list(left_labels)
+            right_eye_indexes = self.find_index_list(right_labels)
+            num_sample = self.num_sample_each_user
+            self.all_data[idx] = {
+                "left_eye_normalized_data": left_eye_data,
+                "right_eye_normalized_data": right_eye_data,
+                "left_indexes": left_eye_indexes[:num_sample],
+                "right_eye_indexes": right_eye_indexes[:num_sample],
+                "left_eye_raw_label_dataframe": left_labels,
+                "right_eye_raw_label_dataframe": right_labels,
+                "length": length_index + len(left_eye_indexes[:num_sample]) + len(right_eye_indexes[:num_sample])
+            }
+            length_index = length_index + len(left_eye_indexes[:num_sample]) + len(right_eye_indexes[:num_sample])
+            self.length_index[idx] = length_index
+
+    def load_data(self):
+        data_path = f"{self.cache_data_dir}/data/{self.split}.npy"
+        label_path = f"{self.cache_data_dir}/label/{self.split}.npy"
+
+        self.merged_data = np.load(data_path)
+        self.merged_labels = np.load(label_path)
 
     def __repr__(self):
         return self.__class__.__name__
 
     def __len__(self):
-        return len(self.all_event)
+        return sum(user_data['length'] for user_data in self.all_data.values())
 
     def __getitem__(self, index):
-        event = self.all_event[index]
-        label = self.all_label[index]    
+        user_idx = None
+        previous_length = 0
+
+        for idx in self.data_idx:
+            if index < self.length_index[idx]:
+                user_idx = idx
+                break
+            previous_length = self.length_index[idx]
+
+        if user_idx is None:
+            raise IndexError("Index out of range")
+
+        relative_index = index - previous_length
+        print("Train User ", user_idx)
+        left_indexes = self.all_data[user_idx]["left_indexes"]
+        right_indexes = self.all_data[user_idx]["right_eye_indexes"]
+
+        if relative_index < len(left_indexes):
+            # data = left_eye_data[left_indexes[relative_index]]
+            eye_data = self.all_data[user_idx]["left_eye_normalized_data"]
+            raw_label_dataframe = self.all_data[user_idx]["left_eye_raw_label_dataframe"]
+            timestamp_index = left_indexes[relative_index]          
+        else:
+            relative_index -= len(left_indexes)
+            eye_data = self.all_data[user_idx]["right_eye_normalized_data"]
+            raw_label_dataframe = self.all_data[user_idx]["right_eye_raw_label_dataframe"]
+            timestamp_index = right_indexes[relative_index]     
+
+        data, label = self.get_item(eye_data, raw_label_dataframe, timestamp_index)
         label = self.target_transform(label)
         data = torch.tensor(data, dtype=torch.float32)
         label = torch.tensor(label, dtype=torch.float32)
         return data, label
+        
+    def process_data_for_idx(self, idx, result_queue):
+        # Initialize dictionaries for each idx
+        self.all_data[idx] = {}
+        self.all_labels[idx] = {}            
+        # self.transform, self.target_transform = get_transforms(self.dataset_params, self.training_params)
+        left_frame_stack, left_event_stack, left_labels = self.collect_data(idx, 0)
+        right_frame_stack, right_event_stack, right_labels = self.collect_data(idx, 1)
+        
+        left_pols, left_xs, left_ys, left_ts = extract_event_components(left_event_stack)
+        right_pols, right_xs, right_ys, right_ts = extract_event_components(right_event_stack)
+        max_xs, min_xs = max(left_xs), min(left_xs)
+        max_ys, min_ys = max(left_ys), min(left_ys)
+        max_ts, min_ts = max(left_ts), min(left_ts)
+        print(f"User: {idx}")
+        print(f'Max x: {max_xs}, Min x: {min_xs}')
+        print(f'Max y: {max_ys}, Min y: {min_ys}')
+        print(f'Max t: {max_ts}, Min t: {min_ts}')
+        print(f'Max row label: {left_labels["row"].max()}, Max column label: {left_labels["col"].max()}')
+
+        left_eye_data = make_structured_array(left_ts, left_xs, left_ys, left_pols, dtype=events_struct)
+        right_eye_data = make_structured_array(right_ts, right_xs, right_ys, right_pols, dtype=events_struct)
+        # normalize
+        left_eye_data = self.input_transform(left_eye_data)
+        right_eye_data = self.input_transform(right_eye_data)
+
+        left_eye_data, left_labels, fixed_window_dt = self.get_item_strategy.get_item(left_eye_data, left_labels, self, self.tonic_transforms)
+        right_eye_data, right_labels, fixed_window_dt = self.get_item_strategy.get_item(right_eye_data, right_labels, self, self.tonic_transforms)
+
+        left_labels = self.target_transform(left_labels)
+        right_labels = self.target_transform(right_labels)
+
+        left_train_data, left_train_label, left_val_data, left_val_label, left_test_data, left_test_label = self.split_data(left_eye_data, left_labels, self.split_ratio, 42, "left", idx)
+        right_train_data, right_train_label, right_val_data, right_val_label, right_test_data, right_test_label = self.split_data(right_eye_data, right_labels, self.split_ratio, 42, "right", idx)
+
+        # result_queue.put([(left_train_data, left_train_label), (right_train_data, right_train_label)])
+        # result_queue.put([(left_val_data, left_val_label), (right_val_data, right_val_label)])
+        # self.all_data[idx]["left_data"] = left_eye_data
+        # self.all_labels[idx]["left_label"] = left_labels
+        # self.all_data[idx]["right_data"] = right_eye_data
+        # self.all_labels[idx]["right_label"] = right_labels
+
+        result_queue.put((left_train_data, left_train_label, left_val_data, left_val_label, left_test_data, left_test_label, 
+                            right_train_data, right_train_label, right_val_data, right_val_label, right_test_data, right_test_label))
 
     def merge_results(self, results):
         merged_train_data = []
@@ -334,6 +469,73 @@ class DatasetHz10000:
         return (np.array(merged_train_data), np.array(merged_train_labels), 
                 np.array(merged_val_data), np.array(merged_val_labels), 
                 np.array(merged_test_data), np.array(merged_test_labels))
+
+    def parallel_process_data(self):
+        # Create a queue to collect results
+        result_queue = Queue()
+
+        # Create and start a process for each idx
+        processes = []
+        for idx in self.data_idx:
+            process = Process(target=partial(self.process_data_for_idx, idx, result_queue))
+            processes.append(process)
+            process.start()
+
+        # Wait for all processes to finish
+        for process in processes:
+            process.join()
+
+        # Collect results from the queue
+        results = []
+        while not result_queue.empty():
+            result = result_queue.get()
+            if isinstance(result, Exception):
+                raise result
+            results.append(result)
+
+        # Merge results
+        merged_train_data, merged_train_labels, merged_val_data, merged_val_labels, merged_test_data, merged_test_labels = self.merge_results(results)
+
+        os.makedirs(f"{self.cache_data_dir}/data", exist_ok=True)
+        os.makedirs(f"{self.cache_data_dir}/label", exist_ok=True)
+
+        # Save all the merged data splits as NumPy arrays
+        np.save(f"{self.cache_data_dir}/data/train.npy", merged_train_data)
+        np.save(f"{self.cache_data_dir}/label/train.npy", merged_train_labels)
+
+        np.save(f"{self.cache_data_dir}/data/val.npy", merged_val_data)
+        np.save(f"{self.cache_data_dir}/label/val.npy", merged_val_labels)
+
+        np.save(f"{self.cache_data_dir}/data/test.npy", merged_test_data)
+        np.save(f"{self.cache_data_dir}/label/test.npy", merged_test_labels)
+
+        # Optionally, return them if needed
+        return merged_train_data, merged_train_labels, merged_val_data, merged_val_labels, merged_test_data, merged_test_labels
+
+    def split_data(self, data, label, ratio, seed, eye, user_idx):
+        train_data, temp_data, train_label, temp_label = train_test_split(data, label, test_size=1-ratio, random_state=seed)
+        val_data, test_data, val_label, test_label = train_test_split(temp_data, temp_label, test_size=0.5, random_state=seed)
+        
+        
+        # os.makedirs(f"{self.cache_data_dir}/train/data", exist_ok=True)
+        # os.makedirs(f"{self.cache_data_dir}/train/label", exist_ok=True)
+
+        # os.makedirs(f"{self.cache_data_dir}/val/data", exist_ok=True)
+        # os.makedirs(f"{self.cache_data_dir}/val/label", exist_ok=True)
+
+        # os.makedirs(f"{self.cache_data_dir}/test/data", exist_ok=True)
+        # os.makedirs(f"{self.cache_data_dir}/test/label", exist_ok=True)
+
+        # np.save(f"{self.cache_data_dir}/train/data/user{user_idx}_{eye}.npy", train_data)
+        # np.save(f"{self.cache_data_dir}/train/label/user{user_idx}_{eye}.npy", train_label)
+
+        # np.save(f"{self.cache_data_dir}/val/data/user{user_idx}_{eye}.npy", val_data)
+        # np.save(f"{self.cache_data_dir}/val/label/user{user_idx}_{eye}.npy", val_label)
+
+        # np.save(f"{self.cache_data_dir}/test/data/user{user_idx}_{eye}.npy", test_data)
+        # np.save(f"{self.cache_data_dir}/test/label/user{user_idx}_{eye}.npy", test_label)
+
+        return train_data, train_label, val_data, val_label, test_data, test_label
     
     def cache_files_exist(self, user_idx, eye):
         """Check if all cache files for a given user and eye exist."""
@@ -586,6 +788,89 @@ class DatasetHz10000:
         # batch_label = torch.stack(batch_label)
             # break
         return np.array(batch_data).astype(np.float32), np.array(batch_label).astype(np.float32)
+
+    # def load_static_window(self, data, labels):
+        # tab_start, tab_last = labels.iloc[0], labels.iloc[-1]
+        # start_label = (int(tab_start.row.item()), int(tab_start.col.item()))
+        # end_label = (int(tab_last.row.item()), int(tab_last.col.item()))
+
+        # start_time = tab_last["timestamp"] - self.fixed_window_dt * (self.num_bins + 1)
+        # evs_t = data["t"][data["t"] >= start_time]
+        # evs_p, evs_xy = data["p"][-evs_t.shape[0] :], data["xy"][-evs_t.shape[0] :, :]
+
+        # # frame
+        # data = np.zeros(
+        #     (self.num_bins, self.input_channel, self.img_width, self.img_height)
+        # )
+
+        # # indexes
+        # start_idx = 0
+
+        # # get intermediary labels based on num of bins
+        # fixed_timestamps = np.linspace(start_time, tab_last["timestamp"], self.num_bins)
+        # x_axis, y_axis = [], []
+
+        # for i, fixed_tmp in enumerate(fixed_timestamps):
+        #     # label
+        #     idx = np.searchsorted(labels["timestamp"], fixed_tmp, side="left")
+        #     if idx == 0:
+        #         x_axis.append(start_label[0])
+        #         y_axis.append(start_label[1])
+        #     elif idx == len(labels["timestamp"]):
+        #         x_axis.append(end_label[0])
+        #         y_axis.append(end_label[1])
+        #     else:  # Weighted interpolation
+        #         t0 = labels["timestamp"].iloc[idx - 1]
+        #         t1 = labels["timestamp"].iloc[idx]
+
+        #         weight0 = (t1 - fixed_tmp) / (t1 - t0)
+        #         weight1 = (fixed_tmp - t0) / (t1 - t0)
+
+        #         x_axis.append(
+        #             int(
+        #                 labels.iloc[idx - 1]["row"] * weight0
+        #                 + labels.iloc[idx]["row"] * weight1
+        #             )
+        #         )
+        #         y_axis.append(
+        #             int(
+        #                 labels.iloc[idx - 1]["col"] * weight0
+        #                 + labels.iloc[idx]["col"] * weight1
+        #             )
+        #         )
+
+        #     # slice
+        #     t = evs_t[start_idx:][evs_t[start_idx:] <= fixed_tmp]
+        #     if t.shape[0] == 0:
+        #         continue
+        #     xy = evs_xy[start_idx : start_idx + t.shape[0], :]
+        #     p = evs_p[start_idx : start_idx + t.shape[0]]
+
+        #     np.add.at(data[i, 0], (xy[p == 0, 0], xy[p == 0, 1]), 1)
+        #     if self.input_channel > 1:
+        #         np.add.at(
+        #             data[i, self.input_channel - 1], (xy[p == 1, 0], xy[p == 1, 1]), 1
+        #         )
+        #         data[i, 0, :, :][
+        #             data[i, 1, :, :] >= data[i, 0, :, :]
+        #         ] = 0  # if ch 1 has more evs than 0
+        #         data[i, 1, :, :][
+        #             data[i, 1, :, :] < data[i, 0, :, :]
+        #         ] = 0  # if ch 0 has more evs than 1
+
+        #     data[i] = data[i].clip(0, 1)  # no double events
+
+        #     # move pointers
+        #     start_idx += t.shape[0]
+
+        # # frames = torch.rot90(torch.tensor(data), k=2, dims=(2, 3))
+        # # frames = frames.permute(0, 1, 3, 2) 
+        # # labels = self.target_transform(np.vstack([x_axis, y_axis]))
+
+        # # self.avg_dt += (evs_t[-1] - evs_t[0]) / self.num_bins
+        # # self.items += 1
+        # labels = np.column_stack((x_axis, y_axis))
+        # return data, labels
 
     def load_dynamic_window(self, data, labels):
         tab_start, tab_last = labels.iloc[0], labels.iloc[-1]

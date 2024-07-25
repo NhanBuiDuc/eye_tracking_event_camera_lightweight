@@ -261,42 +261,61 @@ class DatasetHz10000:
 
     def _load_file(self, data_file, label_file):
         print("Load ", data_file)
+        print("Load ", label_file)
         user_data = np.load(data_file)
+        print("Finished loading ", data_file)  
         user_labels = np.load(label_file)
+        print("Finished loading ", label_file)        
         return user_data, user_labels
 
-    def load_cached_data(self):
-        data_files = [os.path.join(self.cache_data_dir, f"{index}_data.npy") for index in self.data_idx]
-        label_files = [os.path.join(self.cache_data_dir, f"{index}_labels.npy") for index in self.data_idx]
+    # def load_cached_data(self, data_idx=None):
 
-        with multiprocessing.Pool() as pool:
-            results = pool.starmap(self._load_file, zip(data_files, label_files))
+    #     if data_idx is not None:
+    #         self.data_idx = data_idx
+    #     data_files = [os.path.join(self.cache_data_dir, f"{index}_data.npy") for index in self.data_idx]
+    #     label_files = [os.path.join(self.cache_data_dir, f"{index}_labels.npy") for index in self.data_idx]
 
-        all_data = [res[0] for res in results]
-        all_labels = [res[1] for res in results]
+    #     with multiprocessing.Pool() as pool:
+    #         results = pool.starmap(self._load_file, zip(data_files, label_files))
 
-        self.all_event = np.concatenate(all_data)
-        self.all_label = np.concatenate(all_labels)
+    #     all_data = [res[0] for res in results]
+    #     all_labels = [res[1] for res in results]
 
-    # def load_cached_data(self):
-    #     data_files = glob.glob(os.path.join(self.cache_data_dir, '*_data.npy'))
-    #     label_files = glob.glob(os.path.join(self.cache_data_dir, '*_labels.npy'))
-        
-    #     data_files.sort()
-    #     label_files.sort()
-        
-    #     all_data = []
-    #     all_labels = []
-        
-    #     for data_file, label_file in zip(data_files, label_files):
-    #         user_data = np.load(data_file)
-    #         user_labels = np.load(label_file)
-            
-    #         all_data.append(user_data)
-    #         all_labels.append(user_labels)
-        
     #     self.all_event = np.concatenate(all_data)
     #     self.all_label = np.concatenate(all_labels)
+
+    def load_cached_data(self, data_idx=None):
+
+        if data_idx is not None:
+            self.data_idx = data_idx
+
+        # Split the data indices into two halves
+        mid_point = len(self.data_idx) // 2
+        first_half_idx = self.data_idx[:mid_point]
+        second_half_idx = self.data_idx[mid_point:]
+
+        # Helper function to load and concatenate data and labels for given indices
+        def load_and_concatenate(indices):
+            data_files = [os.path.join(self.cache_data_dir, f"{index}_data.npy") for index in indices]
+            label_files = [os.path.join(self.cache_data_dir, f"{index}_labels.npy") for index in indices]
+
+            with multiprocessing.Pool() as pool:
+                results = pool.starmap(self._load_file, zip(data_files, label_files))
+
+            all_data = [res[0] for res in results]
+            all_labels = [res[1] for res in results]
+
+            return np.concatenate(all_data), np.concatenate(all_labels)
+
+        # Load data and labels for the first half
+        all_data_first_half, all_labels_first_half = load_and_concatenate(first_half_idx)
+
+        # Load data and labels for the second half
+        all_data_second_half, all_labels_second_half = load_and_concatenate(second_half_idx)
+
+        # Concatenate the results from both halves
+        self.all_event = np.concatenate([all_data_first_half, all_data_second_half])
+        self.all_label = np.concatenate([all_labels_first_half, all_labels_second_half])
 
     def __repr__(self):
         return self.__class__.__name__
@@ -308,7 +327,7 @@ class DatasetHz10000:
         event = self.all_event[index]
         label = self.all_label[index]    
         label = self.target_transform(label)
-        data = torch.tensor(data, dtype=torch.float32)
+        data = torch.tensor(event, dtype=torch.float32)
         label = torch.tensor(label, dtype=torch.float32)
         return data, label
 

@@ -99,7 +99,7 @@ def main(train_dataset, val_dataset, test_dataset, dataset_params, training_para
     losses = training_params["losses"]
     device = training_params["device"]
     save_every = 1
-    snapshot_path = "checkpoints/SimpleConvLSTM_epoch_0.pt"
+    snapshot_path = "checkpoints"
     # Create a Path object
     path = Path(snapshot_path)
     path.mkdir(parents=True, exist_ok=True)
@@ -146,16 +146,10 @@ def main(train_dataset, val_dataset, test_dataset, dataset_params, training_para
     criterions_sequence = create_losses_sequence(losses, dataset_params, training_params)
     metrics_sequence = create_metrics_sequence(metrics)
 
-    if load_checkpoint and os.path.exists(snapshot_path):
-            print(f"Checkpoint found at '{snapshot_path}'. Loading checkpoint.")
-            snapshot = torch.load(snapshot_path)
-            model.load_state_dict(snapshot["MODEL_STATE"])
-            optimizer.load_state_dict(snapshot["OPTIMIZER"])  # Ensure optimizer state is saved
-            start_epoch = snapshot["EPOCHS_RUN"]
-            print(f"Checkpoint loaded. Resuming training from epoch {start_epoch}.")
 
     # test_dataset = Ini30Dataset(split="test", config_json_path=config_params)  # Example dataset
     dataloader_list = []
+    optimizer = torch.optim.SGD(model.parameters(), lr=1e-3)
 
     train_dataloader = prepare_dataloader(train_dataset, batch_size)
     val_dataloader = prepare_dataloader(val_dataset, batch_size)
@@ -165,9 +159,9 @@ def main(train_dataset, val_dataset, test_dataset, dataset_params, training_para
     dataloader_list.append(test_dataloader)
     # train_dataloader = prepare_dataloader(train_dataset, batch_size)
     trainer = Trainer(model, device, dataloader_list, optimizer, scheduler, criterions_sequence, metrics_sequence, save_every, snapshot_path)
-    trainer.train(num_epochs)
+    # trainer.train(num_epochs)
     # thread.join()
-    # trainer.evaluate()
+    trainer.evaluate()
 
 if __name__ == "__main__":
     # Example function to load your dataset, model, and optimizer
@@ -194,7 +188,8 @@ if __name__ == "__main__":
         train_dataset.prepare_unstructured_data()
         val_dataset.prepare_unstructured_data()
     else:
-        train_dataset.load_cached_data()
+        index = [22]
+        val_dataset.load_cached_data(index)
     if short_train:
         train_dataset = torch.utils.data.Subset(train_dataset, range(100))
         val_dataset = torch.utils.data.Subset(val_dataset, range(100))

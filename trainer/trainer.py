@@ -145,9 +145,11 @@ class Trainer(ABC):
         # loss_dict_accumulator = {}  # To accumulate total losses by type
         with torch.no_grad():
             val_loss = 0
-            for source, target, avg_dt in tqdm(self.val_data_loader):
+            for source, target in tqdm(self.val_data_loader):
+                b, seq_len, c = target.shape
                 source = source.to(self.gpu_id)
                 target = target.to(self.gpu_id)
+                timestep_outputs = []
                 for t in range(seq_len):
                     data = source[:, t, :, :, :]
                     data = data.unsqueeze(1)
@@ -184,7 +186,7 @@ class Trainer(ABC):
         # loss_dict_accumulator = {}  # To accumulate total losses by type
         with torch.no_grad():
             val_loss = 0
-            for source, target, avg_dt in tqdm(self.test_data_loader):
+            for source, target in tqdm(self.test_data_loader):
                 source = source.to(self.gpu_id)
                 target = target.to(self.gpu_id)
                 for t in range(seq_len):
@@ -238,6 +240,7 @@ class Trainer(ABC):
         snapshot = {
             "MODEL_STATE": self.model.state_dict(),
             "EPOCHS_RUN": epoch,
+            "OPTIMIZER": self.optimizer.state_dict()
         }
         class_name = str(type(self.model)).split('.')[-1][:-2]  # Extract class name 'Retina'
         file_name = f"{self.snapshot_path}/{class_name}_epoch_{epoch}.pt"

@@ -1,5 +1,5 @@
 from data.dataset.ini_30_dataset import Ini30Dataset
-from data.dataset.hz_10000 import DatasetHz10000
+from data.dataset.DynamicDataset import DynamicDatasetHz10000
 import torch
 import json
 from model.B_3ET import Baseline_3ET
@@ -190,8 +190,8 @@ if __name__ == "__main__":
     dataset_params = config_params["dataset_params"]
     training_params = config_params["training_params"]
     short_train = False
-    train_dataset = DatasetHz10000(split="train", config_params=config_params)  # Example dataset
-    val_dataset = DatasetHz10000(split="val", config_params=config_params)  # Example dataset
+    train_dataset = DynamicDatasetHz10000(split="train", config_params=config_params)  # Example dataset
+    val_dataset = DynamicDatasetHz10000(split="val", config_params=config_params)  # Example dataset
     # test_dataset = DatasetHz10000(split="test", config_params=config_params)  # Example dataset
     cache = dataset_params["use_cache"]
     if cache == False:

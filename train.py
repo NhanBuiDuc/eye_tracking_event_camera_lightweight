@@ -198,7 +198,7 @@ if __name__ == "__main__":
         train_dataset.prepare_unstructured_data()
         # val_dataset.prepare_unstructured_data()
     else:
-        train_dataset.load_cached_data([1, 2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20])
+        train_dataset.load_cached_data()
 
     if short_train:
         train_dataset = torch.utils.data.Subset(train_dataset, range(100))

@@ -341,14 +341,10 @@ class DatasetHz10000:
             return np.concatenate(all_data), np.concatenate(all_labels)
 
         # Load data and labels for the first half
-        all_data_first_half, all_labels_first_half = load_and_concatenate(first_half_idx)
+        self.all_data_first_half, self.all_labels_first_half = load_and_concatenate(first_half_idx)
 
         # Load data and labels for the second half
-        all_data_second_half, all_labels_second_half = load_and_concatenate(second_half_idx)
-
-        # Concatenate the results from both halves
-        self.all_event = np.concatenate([all_data_first_half, all_data_second_half])
-        self.all_label = np.concatenate([all_labels_first_half, all_labels_second_half])
+        self.all_data_second_half, self.all_labels_second_half = load_and_concatenate(second_half_idx)
 
     # def _load_file(self, data_file, label_file):
     #     print("Load ", data_file)
@@ -399,11 +395,21 @@ class DatasetHz10000:
         return len(self.all_event)
 
     def __getitem__(self, index):
-        event = self.all_event[index]
-        label = self.all_label[index]    
-        label = self.target_transform(label)
+        
+        if(index < len(self.all_data_first_half)):
+            relative_index = index
+            event = self.all_data_first_half[relative_index]
+            label = self.all_labels_first_half[relative_index]    
+            label = self.target_transform(label)
+        else:
+            relative_index = index - len(self.all_data_first_half)
+            event = self.all_data_second_half[relative_index]
+            label = self.all_labels_second_half[relative_index]    
+            label = self.target_transform(label)
+
         data = torch.tensor(event, dtype=torch.float32)
         label = torch.tensor(label, dtype=torch.float32)
+
         return data, label
 
     def merge_results(self, results):

@@ -94,8 +94,8 @@ class Trainer(ABC):
             b, seq_len, c = target.shape
             timestep_outputs = []
 
-            source = source.to(self.gpu_id)
-            target = target.to(self.gpu_id)
+            source = source.to(self.gpu_id).float()
+            target = target.to(self.gpu_id).float()
             self.optimizer.zero_grad()
             data = source.clone()
             for t in range(seq_len):
@@ -119,7 +119,7 @@ class Trainer(ABC):
             targets.append(target.cpu().detach().numpy())
             # gpus.append(self.gpu_id)
 
-            total_loss, loss_dict = self.criterions(output, target)
+            total_loss, loss_dict = self.criterions(output.float(), target.float())
 
             # if self.gpu_id == 0:
             for loss in loss_dict:

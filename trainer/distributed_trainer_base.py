@@ -48,13 +48,11 @@ class DistributedTrainerBase(ABC):
         self.snapshot_path = snapshot_path
         self.epochs_run = 0
         # self.model = self.model.to(self.gpu_id)
-        self.criterions = nn.MSELoss()
         
     def train(self, max_epochs):
         for epoch in range(self.epochs_run, max_epochs):
             self._run_epoch(epoch)
-            if self.gpu_id == 0 and epoch % self.save_every == 0:
-                self._save_snapshot(epoch)
+            self._save_snapshot(epoch)
 
     def backward(self, loss):
         loss.backward(retain_graph=True)
@@ -78,11 +76,11 @@ class DistributedTrainerBase(ABC):
             
     def save_numpy(self, log_dict, directory):
         os.makedirs(directory, exist_ok=True)  # Create directory if it doesn't exist
-        
+
         for key, value in log_dict.items():
+
+            # Save the concatenated tensor
             filename = os.path.join(directory, f"{key}.npy")
-            if isinstance(value, torch.Tensor):
-                value = value.cpu().detach().numpy()
             np.save(filename, value)
             
     def _run_epoch(self, epoch):
@@ -101,21 +99,34 @@ class DistributedTrainerBase(ABC):
             source = source.to(self.gpu_id)
             target = target.to(self.gpu_id)
             self.optimizer.zero_grad()
-            # Pre-allocate the output tensor
-            timestep_outputs = torch.empty((b, seq_len, 2), device=self.gpu_id)
             
             # Initial hidden state (if needed by your model)
             hidden_states = None
             
+            data = source.clone()
             for t in range(seq_len):
-                out, hidden_states = self.model(source[:, t, :, :, :].unsqueeze(1), hidden_states)
-                timestep_outputs[:, t, :] = out.squeeze(1)  # Adjust indexing as needed
 
-            outputs.append(timestep_outputs.cpu().detach().numpy())
+                if t == 0:
+                    out, hidden_states = self.model(data[:, t, :, :, :].view(b, 1, *data.shape[2:]), None)
+                else:
+                    out, hidden_states = self.model(data[:, t, :, :, :].view(b, 1, *data.shape[2:]), hidden_states)
+
+                timestep_outputs.append(out)
+
+            # Convert timestep_outputs to a tensor
+            output = torch.stack(timestep_outputs)
+            
+            # Ensure the output tensor is contiguous before using view
+            output = output.contiguous()
+            
+            # Use view to reshape the tensor to the desired shape
+            output = output.view(target.shape)
+
+            outputs.append(output.cpu().detach().numpy())
             targets.append(target.cpu().detach().numpy())
             # gpus.append(self.gpu_id)
 
-            total_loss = self.criterions(timestep_outputs, target)
+            total_loss, loss_dict = self.criterions(output, target)
 
             # # if self.gpu_id == 0:
             # for loss in loss_dict:
@@ -123,6 +134,10 @@ class DistributedTrainerBase(ABC):
 
             self.backward(total_loss)
             self.optimizer.step()
+            
+        outputs = np.concatenate(outputs, axis=0)
+        targets = np.concatenate(targets, axis=0)
+
         if epoch == 0:
             log_dict = {
                 f"gpu_{self.gpu_id}_output": outputs,
@@ -147,21 +162,29 @@ class DistributedTrainerBase(ABC):
                 b, seq_len, c = target.shape
                 source = source.to(self.gpu_id)
                 target = target.to(self.gpu_id)
+                data = source.clone()
                 for t in range(seq_len):
-                    data = source[:, t, :, :, :].clone()
-                    data = data.unsqueeze(1)
+
                     if t == 0:
-                        output, hidden_states = self.model(data, None)
+                        out, hidden_states = self.model(data[:, t, :, :, :].view(b, 1, *data.shape[2:]), None)
                     else:
-                        output, hidden_states = self.model(data, hidden_states)
-                        
-                    timestep_outputs.append(output)
+                        out, hidden_states = self.model(data[:, t, :, :, :].view(b, 1, *data.shape[2:]), hidden_states)
+
+                    timestep_outputs.append(out)
+
                 # Convert timestep_outputs to a tensor
                 output = torch.stack(timestep_outputs)
-                output = output.reshape(*target.shape)
-
+                
+                # Ensure the output tensor is contiguous before using view
+                output = output.contiguous()
+                
+                # Use view to reshape the tensor to the desired shape
+                output = output.view(target.shape)
                 outputs.append(output.cpu().detach().numpy())
                 targets.append(target.cpu().detach().numpy())
+
+        outputs = np.concatenate(outputs, axis=0)
+        targets = np.concatenate(targets, axis=0)
 
         log_dict = {
             f"gpu_{self.gpu_id}_output": outputs,
@@ -186,21 +209,30 @@ class DistributedTrainerBase(ABC):
                 b, seq_len, c = target.shape
                 source = source.to(self.gpu_id)
                 target = target.to(self.gpu_id)
+                data = source.clone()
                 for t in range(seq_len):
-                    data = source[:, t, :, :, :].clone()
-                    data = data.unsqueeze(1)
+
                     if t == 0:
-                        output, hidden_states = self.model(data, None)
+                        out, hidden_states = self.model(data[:, t, :, :, :].view(b, 1, *data.shape[2:]), None)
                     else:
-                        output, hidden_states = self.model(data, hidden_states)
-                        
-                    timestep_outputs.append(output)
+                        out, hidden_states = self.model(data[:, t, :, :, :].view(b, 1, *data.shape[2:]), hidden_states)
+
+                    timestep_outputs.append(out)
+
                 # Convert timestep_outputs to a tensor
                 output = torch.stack(timestep_outputs)
-                output = output.reshape(*target.shape)
+                
+                # Ensure the output tensor is contiguous before using view
+                output = output.contiguous()
+                
+                # Use view to reshape the tensor to the desired shape
+                output = output.view(target.shape)
 
                 outputs.append(output.cpu().detach().numpy())
                 targets.append(target.cpu().detach().numpy())
+
+        outputs = np.concatenate(outputs, axis=0)
+        targets = np.concatenate(targets, axis=0)
 
         log_dict = {
             f"gpu_{self.gpu_id}_output": outputs,
@@ -236,6 +268,7 @@ class DistributedTrainerBase(ABC):
         snapshot = {
             "MODEL_STATE": self.model.module.state_dict(),
             "EPOCHS_RUN": epoch,
+            "OPTIMIZER": self.optimizer.state_dict()
         }
         class_name = str(type(self.model.module)).split('.')[-1][:-2]  # Extract class name 'Retina'
         file_name = f"{self.snapshot_path}/{class_name}_epoch_{epoch}.pt"

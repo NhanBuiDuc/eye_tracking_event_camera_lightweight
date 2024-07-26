@@ -99,17 +99,22 @@ class Trainer(ABC):
             self.optimizer.zero_grad()
             data = source.clone()
             for t in range(seq_len):
-                
+
                 if t == 0:
-                    out, hidden_states = self.model(data[:, t, :, :, :].unsqueeze(1), None)
+                    out, hidden_states = self.model(data[:, t, :, :, :].view(b, 1, *data.shape[2:]), None)
                 else:
-                    out, hidden_states = self.model(data[:, t, :, :, :].unsqueeze(1), hidden_states)
-                    
+                    out, hidden_states = self.model(data[:, t, :, :, :].view(b, 1, *data.shape[2:]), hidden_states)
+
                 timestep_outputs.append(out)
 
             # Convert timestep_outputs to a tensor
             output = torch.stack(timestep_outputs)
-            output = self.reshape(output, [target.shape])
+            
+            # Ensure the output tensor is contiguous before using view
+            output = output.contiguous()
+            
+            # Use view to reshape the tensor to the desired shape
+            output = output.view(target.shape)
             outputs.append(output.cpu().detach().numpy())
             targets.append(target.cpu().detach().numpy())
             # gpus.append(self.gpu_id)
@@ -150,23 +155,31 @@ class Trainer(ABC):
                 source = source.to(self.gpu_id)
                 target = target.to(self.gpu_id)
                 timestep_outputs = []
+                data = source.clone()
                 for t in range(seq_len):
-                    data = source[:, t, :, :, :]
-                    data = data.unsqueeze(1)
+
                     if t == 0:
-                        output, hidden_states = self.model(data, None)
+                        out, hidden_states = self.model(data[:, t, :, :, :].view(b, 1, *data.shape[2:]), None)
                     else:
-                        output, hidden_states = self.model(data, hidden_states)
+                        out, hidden_states = self.model(data[:, t, :, :, :].view(b, 1, *data.shape[2:]), hidden_states)
 
-                    timestep_outputs.append(output)
+                    timestep_outputs.append(out)
 
-                timestep_outputs_tensor = torch.stack(timestep_outputs)
-                output = self.reshape(timestep_outputs_tensor, [target.shape]) 
+                # Convert timestep_outputs to a tensor
+                output = torch.stack(timestep_outputs)
+                
+                # Ensure the output tensor is contiguous before using view
+                output = output.contiguous()
+                
+                # Use view to reshape the tensor to the desired shape
+                output = output.view(target.shape)
                 outputs.append(output.cpu().detach().numpy())
                 targets.append(target.cpu().detach().numpy())
                 # gpus.append(self.gpu_id)
+
         outputs = np.concatenate(outputs, axis=0)
         targets = np.concatenate(targets, axis=0)
+        
         log_dict = {
             f"gpu_{self.gpu_id}_output": outputs,
             f"gpu_{self.gpu_id}_target": targets,
@@ -189,28 +202,36 @@ class Trainer(ABC):
             for source, target in tqdm(self.test_data_loader):
                 source = source.to(self.gpu_id)
                 target = target.to(self.gpu_id)
+                data = source.clone()
                 for t in range(seq_len):
-                    data = source[:, t, :, :, :]
-                    data = data.unsqueeze(1)
-                    if t == 0:
-                        output, hidden_states = self.model(data, None)
-                    else:
-                        output, hidden_states = self.model(data, hidden_states)
 
-                    timestep_outputs.append(output)
-                    
-                timestep_outputs_tensor = torch.stack(timestep_outputs, requires_grad=True)
-                output = self.reshape(timestep_outputs_tensor, [target.shape])
+                    if t == 0:
+                        out, hidden_states = self.model(data[:, t, :, :, :].view(b, 1, *data.shape[2:]), None)
+                    else:
+                        out, hidden_states = self.model(data[:, t, :, :, :].view(b, 1, *data.shape[2:]), hidden_states)
+
+                    timestep_outputs.append(out)
+
+                # Convert timestep_outputs to a tensor
+                output = torch.stack(timestep_outputs)
+                
+                # Ensure the output tensor is contiguous before using view
+                output = output.contiguous()
+                
+                # Use view to reshape the tensor to the desired shape
+                output = output.view(target.shape)
                 outputs.append(output.cpu().detach().numpy())
-                targets.append(target.cpu().detach().numpy())
+                targets.append(target.cpu().detach().numpy()) 
                 # gpus.append(self.gpu_id)
+
         outputs = np.concatenate(outputs, axis=0)
         targets = np.concatenate(targets, axis=0)
+
         log_dict = {
             f"gpu_{self.gpu_id}_output": outputs,
             f"gpu_{self.gpu_id}_target": targets,
         }
-        path = Path("cache/eval/")
+        path = Path("cache/test/")
         self.save_numpy(log_dict, path)
     
     def reshape(self, tensor, shape):

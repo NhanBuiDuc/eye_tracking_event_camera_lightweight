@@ -21,12 +21,13 @@
         "num_sample_each_user": 1000
     },
     "training_params": {
+        "arch_name": "LSTM",
         "device": "cuda:4",
         "metrics": ["angular_error"],
         "losses": ["mean_squared_error"],
         "lr_model": 1e-6,
         "num_epochs": 10,
-        "batch_size": 64,
+        "batch_size": 32,
         "optimizer": "Adam",
         "scheduler": "StepLR",
         "out_dir": "output",

@@ -36,46 +36,89 @@ import numpy as np
 import concurrent.futures
 from threading import Lock
 import multiprocessing
+import h5py
 def process_and_save_user_data(args):
-        idx, self = args
-        print(f"Preparing index for user {idx}")
-        self.all_data[idx] = {}
+    idx, self = args
+    print(f"Preparing index for user {idx}")
+    self.all_data[idx] = {}
+    
+    left_frame_stack, left_event_stack, left_labels = self.collect_data(idx, 0)
+    right_frame_stack, right_event_stack, right_labels = self.collect_data(idx, 1)
+
+    left_pols, left_xs, left_ys, left_ts = extract_event_components(left_event_stack)
+    right_pols, right_xs, right_ys, right_ts = extract_event_components(right_event_stack)
+
+    left_eye_data = make_structured_array(left_ts, left_xs, left_ys, left_pols, dtype=events_struct)
+    right_eye_data = make_structured_array(right_ts, right_xs, right_ys, right_pols, dtype=events_struct)
+
+    left_eye_data = self.input_transform(left_eye_data)
+    right_eye_data = self.input_transform(right_eye_data)
+
+    left_eye_indexes = self.find_index_list(left_labels)
+    right_eye_indexes = self.find_index_list(right_labels)
+
+    data_list = []
+    label_list = []
+
+    for timestamp_index in tqdm(left_eye_indexes):
+        data, label = self.get_item(left_eye_data, left_labels, timestamp_index)
+        data_list.append(data)
+        label_list.append(label)
+
+    for timestamp_index in tqdm(right_eye_indexes):
+        data, label = self.get_item(right_eye_data, right_labels, timestamp_index)
+        data_list.append(data)
+        label_list.append(label)
+
+    data_array = np.array(data_list)
+    label_array = np.array(label_list)
+
+    with h5py.File(f'{self.cache_data_dir}/{idx}_data.h5', 'w') as hf:
+        hf.create_dataset('data', data=data_array, compression='gzip')
+        hf.create_dataset('labels', data=label_array, compression='gzip')
+
+    return idx
+
+# def process_and_save_user_data(args):
+#         idx, self = args
+#         print(f"Preparing index for user {idx}")
+#         self.all_data[idx] = {}
         
-        left_frame_stack, left_event_stack, left_labels = self.collect_data(idx, 0)
-        right_frame_stack, right_event_stack, right_labels = self.collect_data(idx, 1)
+#         left_frame_stack, left_event_stack, left_labels = self.collect_data(idx, 0)
+#         right_frame_stack, right_event_stack, right_labels = self.collect_data(idx, 1)
 
-        left_pols, left_xs, left_ys, left_ts = extract_event_components(left_event_stack)
-        right_pols, right_xs, right_ys, right_ts = extract_event_components(right_event_stack)
+#         left_pols, left_xs, left_ys, left_ts = extract_event_components(left_event_stack)
+#         right_pols, right_xs, right_ys, right_ts = extract_event_components(right_event_stack)
 
-        left_eye_data = make_structured_array(left_ts, left_xs, left_ys, left_pols, dtype=events_struct)
-        right_eye_data = make_structured_array(right_ts, right_xs, right_ys, right_pols, dtype=events_struct)
+#         left_eye_data = make_structured_array(left_ts, left_xs, left_ys, left_pols, dtype=events_struct)
+#         right_eye_data = make_structured_array(right_ts, right_xs, right_ys, right_pols, dtype=events_struct)
 
-        left_eye_data = self.input_transform(left_eye_data)
-        right_eye_data = self.input_transform(right_eye_data)
+#         left_eye_data = self.input_transform(left_eye_data)
+#         right_eye_data = self.input_transform(right_eye_data)
 
-        left_eye_indexes = self.find_index_list(left_labels)
-        right_eye_indexes = self.find_index_list(right_labels)
+#         left_eye_indexes = self.find_index_list(left_labels)
+#         right_eye_indexes = self.find_index_list(right_labels)
 
-        data_list = []
-        label_list = []
+#         data_list = []
+#         label_list = []
 
-        for timestamp_index in tqdm(left_eye_indexes):
-            data, label = self.get_item(left_eye_data, left_labels, timestamp_index)
-            data_list.append(data)
-            label_list.append(label)
+#         for timestamp_index in tqdm(left_eye_indexes):
+#             data, label = self.get_item(left_eye_data, left_labels, timestamp_index)
+#             data_list.append(data)
+#             label_list.append(label)
 
-        for timestamp_index in tqdm(right_eye_indexes):
-            data, label = self.get_item(right_eye_data, right_labels, timestamp_index)
-            data_list.append(data)
-            label_list.append(label)
+#         for timestamp_index in tqdm(right_eye_indexes):
+#             data, label = self.get_item(right_eye_data, right_labels, timestamp_index)
+#             data_list.append(data)
+#             label_list.append(label)
 
-        data_array = np.array(data_list)
-        label_array = np.array(label_list)
+#         data_array = np.array(data_list)
+#         label_array = np.array(label_list)
 
-        np.save(f'{self.cache_data_dir}/{idx}_data.npy', data_array)
-        np.save(f'{self.cache_data_dir}/{idx}_labels.npy', label_array)
+#         np.save(f'{self.cache_data_dir}/{idx}_data.npy', data_array)
+#         np.save(f'{self.cache_data_dir}/{idx}_labels.npy', label_array)
 
-        return idx
+#         return idx
         
 def find_closest_index(df, target, start_time, end_time = None, return_last = False):
     # Create a copy of the DataFrame
@@ -259,33 +302,22 @@ class DatasetHz10000:
                 pass
         return indexes
 
+
     def _load_file(self, data_file, label_file):
-        print("Load ", data_file)
-        print("Load ", label_file)
-        user_data = np.load(data_file)
-        print("Finished loading ", data_file)  
-        user_labels = np.load(label_file)
-        print("Finished loading ", label_file)        
+        print("Load data", data_file)
+        print("Load label", label_file)
+        
+        with h5py.File(data_file, 'r') as hf:
+            user_data = hf['data'][:]
+            print("Finished data loading ", data_file)
+        
+        with h5py.File(label_file, 'r') as hf:
+            user_labels = hf['labels'][:]
+            print("Finished label loading ", label_file)
+            
         return user_data, user_labels
-
-    # def load_cached_data(self, data_idx=None):
-
-    #     if data_idx is not None:
-    #         self.data_idx = data_idx
-    #     data_files = [os.path.join(self.cache_data_dir, f"{index}_data.npy") for index in self.data_idx]
-    #     label_files = [os.path.join(self.cache_data_dir, f"{index}_labels.npy") for index in self.data_idx]
-
-    #     with multiprocessing.Pool() as pool:
-    #         results = pool.starmap(self._load_file, zip(data_files, label_files))
-
-    #     all_data = [res[0] for res in results]
-    #     all_labels = [res[1] for res in results]
-
-    #     self.all_event = np.concatenate(all_data)
-    #     self.all_label = np.concatenate(all_labels)
-
+        
     def load_cached_data(self, data_idx=None):
-
         if data_idx is not None:
             self.data_idx = data_idx
 
@@ -296,8 +328,8 @@ class DatasetHz10000:
 
         # Helper function to load and concatenate data and labels for given indices
         def load_and_concatenate(indices):
-            data_files = [os.path.join(self.cache_data_dir, f"{index}_data.npy") for index in indices]
-            label_files = [os.path.join(self.cache_data_dir, f"{index}_labels.npy") for index in indices]
+            data_files = [os.path.join(self.cache_data_dir, f"{index}_data.h5") for index in indices]
+            label_files = [os.path.join(self.cache_data_dir, f"{index}_data.h5") for index in indices]
 
             with multiprocessing.Pool() as pool:
                 results = pool.starmap(self._load_file, zip(data_files, label_files))
@@ -316,6 +348,48 @@ class DatasetHz10000:
         # Concatenate the results from both halves
         self.all_event = np.concatenate([all_data_first_half, all_data_second_half])
         self.all_label = np.concatenate([all_labels_first_half, all_labels_second_half])
+
+    # def _load_file(self, data_file, label_file):
+    #     print("Load ", data_file)
+    #     print("Load ", label_file)
+    #     user_data = np.load(data_file)
+    #     print("Finished loading ", data_file)  
+    #     user_labels = np.load(label_file)
+    #     print("Finished loading ", label_file)        
+    #     return user_data, user_labels
+
+    # def load_cached_data(self, data_idx=None):
+
+    #     if data_idx is not None:
+    #         self.data_idx = data_idx
+
+    #     # Split the data indices into two halves
+    #     mid_point = len(self.data_idx) // 2
+    #     first_half_idx = self.data_idx[:mid_point]
+    #     second_half_idx = self.data_idx[mid_point:]
+
+    #     # Helper function to load and concatenate data and labels for given indices
+    #     def load_and_concatenate(indices):
+    #         data_files = [os.path.join(self.cache_data_dir, f"{index}_data.npy") for index in indices]
+    #         label_files = [os.path.join(self.cache_data_dir, f"{index}_labels.npy") for index in indices]
+
+    #         with multiprocessing.Pool() as pool:
+    #             results = pool.starmap(self._load_file, zip(data_files, label_files))
+
+    #         all_data = [res[0] for res in results]
+    #         all_labels = [res[1] for res in results]
+
+    #         return np.concatenate(all_data), np.concatenate(all_labels)
+
+    #     # Load data and labels for the first half
+    #     all_data_first_half, all_labels_first_half = load_and_concatenate(first_half_idx)
+
+    #     # Load data and labels for the second half
+    #     all_data_second_half, all_labels_second_half = load_and_concatenate(second_half_idx)
+
+    #     # Concatenate the results from both halves
+    #     self.all_event = np.concatenate([all_data_first_half, all_data_second_half])
+    #     self.all_label = np.concatenate([all_labels_first_half, all_labels_second_half])
 
     def __repr__(self):
         return self.__class__.__name__

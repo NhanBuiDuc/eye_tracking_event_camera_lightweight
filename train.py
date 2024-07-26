@@ -19,6 +19,7 @@ from loss.loss_base import Loss, LossSequence
 from loss.YoloLoss import YoloLoss
 from model.simple_convlstm import SimpleConvLSTM
 from data.dataset.hz_10000 import DatasetHz10000
+from metrics.AngularError import AngularError
 
 def setup_ddp(rank, world_size):
     # Set necessary environment variables
@@ -70,6 +71,8 @@ def create_metrics_sequence(metrics: list):
     for metric in metrics:
         if metric == "mean_squared_error":
             results.append(MeanSquaredError())
+        if metric == "angular_error":
+            results.append(AngularError(40))
     metrics_sequence = MetricSequence(results)
     return metrics_sequence
 
@@ -86,7 +89,7 @@ def create_losses_sequence(losses: list, dataset_params: dict, training_params: 
 def distributed_job(rank, world_size, train_dataset, val_dataset, test_dataset, dataset_params, training_params):
     setup_ddp(rank, world_size)
 
-    arch_name = "LSTM"
+    arch_name = training_params["arch_name"]
     optimizer =  training_params["optimizer"]
     lr_model = training_params["lr_model"]
     batch_size = training_params["batch_size"]
@@ -169,7 +172,7 @@ if __name__ == "__main__":
     torch.set_num_interop_threads(10)
     # dist.init_process_group("nccl")
     # rank = dist.get_rank()
-    gpus_list = [3, 4]
+    gpus_list = [2, 3, 4]
     n_gpus = torch.cuda.device_count()
     # print(f"Start running basic DDP example on rank {rank}.")
     os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(map(str, gpus_list)) # Use GPUs 0 and 1
@@ -180,7 +183,7 @@ if __name__ == "__main__":
     # setup_ddp(gpu_indices = [0, 1, 2], rank = rank, world_size)
     # create model and move it to GPU with id rank
     short_train = False
-    config_path = "config/evb_eye_fast.json"
+    config_path = "config/evb_eye.json"
     if config_path is not None:
         with open(config_path, 'r') as f:
             config_params = json.load(f)
@@ -189,8 +192,13 @@ if __name__ == "__main__":
     train_dataset = DatasetHz10000(split="train", config_params=config_params)  # Example dataset
     val_dataset = DatasetHz10000(split="val", config_params=config_params)  # Example dataset
     # test_dataset = DatasetHz10000(split="test", config_params=config_params)  # Example dataset
-    
-    train_dataset.prepare_unstructured_data()
+        
+    cache = dataset_params["use_cache"]
+    if cache == False:
+        train_dataset.prepare_unstructured_data()
+        # val_dataset.prepare_unstructured_data()
+    else:
+        train_dataset.load_cached_data([1, 2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20])
 
     if short_train:
         train_dataset = torch.utils.data.Subset(train_dataset, range(100))

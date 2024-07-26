@@ -20,6 +20,7 @@ from loss.loss_base import Loss, LossSequence
 from loss.YoloLoss import YoloLoss
 from model.simple_convlstm import SimpleConvLSTM
 import multiprocessing
+from metrics.AngularError import AngularError
 
 def setup_ddp(rank, world_size):
     # Set necessary environment variables
@@ -68,6 +69,8 @@ def create_metrics_sequence(metrics: list):
     for metric in metrics:
         if metric == "mean_squared_error":
             results.append(MeanSquaredError())
+        if metric == "angular_error":
+            results.append(AngularError(40))
     metrics_sequence = MetricSequence(results)
     return metrics_sequence
 
@@ -90,7 +93,7 @@ def main(train_dataset, val_dataset, test_dataset, dataset_params, training_para
     # thread.start()
     config_path = "config/evb_eye_fast.json"
 
-    arch_name = "LSTM"
+    arch_name = training_params["arch_name"]
     optimizer =  training_params["optimizer"]
     lr_model = training_params["lr_model"]
     batch_size = training_params["batch_size"]
@@ -98,6 +101,7 @@ def main(train_dataset, val_dataset, test_dataset, dataset_params, training_para
     metrics = training_params["metrics"]
     losses = training_params["losses"]
     device = training_params["device"]
+    # load_checkpoint = training_params["load_checkpoint"]
     save_every = 1
     snapshot_path = "checkpoints/SimpleConvLSTM_epoch_0.pt"
     # Create a Path object
@@ -145,14 +149,14 @@ def main(train_dataset, val_dataset, test_dataset, dataset_params, training_para
 
     criterions_sequence = create_losses_sequence(losses, dataset_params, training_params)
     metrics_sequence = create_metrics_sequence(metrics)
-
-    if load_checkpoint and os.path.exists(snapshot_path):
-            print(f"Checkpoint found at '{snapshot_path}'. Loading checkpoint.")
-            snapshot = torch.load(snapshot_path)
-            model.load_state_dict(snapshot["MODEL_STATE"])
-            optimizer.load_state_dict(snapshot["OPTIMIZER"])  # Ensure optimizer state is saved
-            start_epoch = snapshot["EPOCHS_RUN"]
-            print(f"Checkpoint loaded. Resuming training from epoch {start_epoch}.")
+    # start_epoch = 0
+    # if load_checkpoint and os.path.exists(snapshot_path):
+    #         print(f"Checkpoint found at '{snapshot_path}'. Loading checkpoint.")
+    #         snapshot = torch.load(snapshot_path)
+    #         model.load_state_dict(snapshot["MODEL_STATE"])
+    #         optimizer.load_state_dict(snapshot["OPTIMIZER"])  # Ensure optimizer state is saved
+    #         start_epoch = snapshot["EPOCHS_RUN"]
+    #         print(f"Checkpoint loaded. Resuming training from epoch {start_epoch}.")
 
     # test_dataset = Ini30Dataset(split="test", config_json_path=config_params)  # Example dataset
     dataloader_list = []
@@ -175,7 +179,7 @@ if __name__ == "__main__":
     torch.autograd.set_detect_anomaly(True)
     torch.multiprocessing.set_start_method("spawn", force=True)
     torch.set_default_dtype(torch.float32)
-    torch.set_default_device("cuda:2")
+    torch.set_default_device("cuda")
     torch.set_num_threads(10)
     torch.set_num_interop_threads(10)
 
@@ -188,16 +192,16 @@ if __name__ == "__main__":
     short_train = False
     train_dataset = DatasetHz10000(split="train", config_params=config_params)  # Example dataset
     val_dataset = DatasetHz10000(split="val", config_params=config_params)  # Example dataset
-    test_dataset = DatasetHz10000(split="test", config_params=config_params)  # Example dataset
+    # test_dataset = DatasetHz10000(split="test", config_params=config_params)  # Example dataset
     cache = dataset_params["use_cache"]
     if cache == False:
         train_dataset.prepare_unstructured_data()
-        val_dataset.prepare_unstructured_data()
+        # val_dataset.prepare_unstructured_data()
     else:
-        train_dataset.load_cached_data()
+        train_dataset.load_cached_data([1, 2])
     if short_train:
         train_dataset = torch.utils.data.Subset(train_dataset, range(100))
         val_dataset = torch.utils.data.Subset(val_dataset, range(100))
-        test_dataset = torch.utils.data.Subset(val_dataset, range(100))
+        # test_dataset = torch.utils.data.Subset(val_dataset, range(100))
 
-    main(train_dataset, val_dataset, test_dataset, dataset_params, training_params)
+    main(train_dataset, val_dataset, None, dataset_params, training_params)

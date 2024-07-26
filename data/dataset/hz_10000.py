@@ -37,6 +37,7 @@ import concurrent.futures
 from threading import Lock
 import multiprocessing
 import h5py
+
 def process_and_save_user_data(args):
     idx, self = args
     print(f"Preparing index for user {idx}")

@@ -7,8 +7,9 @@ import numpy as np
 from threading import Thread
 import queue
 from data.dataset.hz_10000 import DatasetHz10000
+from torch.utils.data import IterableDataset
 
-class DynamicDatasetHz10000(DatasetHz10000):
+class DynamicDatasetHz10000(DatasetHz10000, IterableDataset):
     def __init__(self, split: str, config_params: dict, cache_size=5):
         super().__init__(split, config_params)
         self.cache_size = cache_size
@@ -73,29 +74,11 @@ class DynamicDatasetHz10000(DatasetHz10000):
 
     def __len__(self):
         return self.meta_data["total_data_length"]
-
-    def __getitem__(self, index):
-        cumulative_length = 0
-        current_set_idx = None
-        set_index = 0
-
-        # Determine which set the index falls into
-        lengths = list(self.meta_data["length_queue"].queue)
-        for idx, set_length in enumerate(lengths, 1):
-            if index < cumulative_length + set_length:
-                current_set_idx = idx
-                set_index = index - cumulative_length
-                break
-            cumulative_length += set_length
-
-        if current_set_idx is None:
-            raise IndexError("Index out of range")
-
-        # Fetch data and label
-        data = self.data_cache[current_set_idx][set_index]
-        label = self.labels_cache[current_set_idx][set_index]
-
-        # Apply any necessary transformations
-        label = self.target_transform(label)
-
-        return torch.tensor(data), torch.tensor(label)
+    
+    def get_batch(self):
+        data = iter(self.data_cache)
+        label = iter(self.data_cache)
+        yield data, label
+    def __iter__(self):
+        data, label = self.get_batch()
+        return data, label

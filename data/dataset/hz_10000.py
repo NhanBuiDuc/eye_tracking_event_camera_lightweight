@@ -225,7 +225,6 @@ class DatasetHz10000:
         self.merged_data = []
         self.merged_labels = []
         self.avg_dt = 0
-        self.file_list = self.read_file_list()
 
     def prepare_unstructured_data(self, data_idx=None):
         if data_idx is None:

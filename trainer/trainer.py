@@ -200,9 +200,11 @@ class Trainer(ABC):
         with torch.no_grad():
             val_loss = 0
             for source, target in tqdm(self.test_data_loader):
+                b, seq_len, c = target.shape
                 source = source.to(self.gpu_id)
                 target = target.to(self.gpu_id)
                 data = source.clone()
+                timestep_outputs = []
                 for t in range(seq_len):
 
                     if t == 0:

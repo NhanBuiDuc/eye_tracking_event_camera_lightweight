@@ -55,6 +55,7 @@ def prepare_dataloader(dataset, batch_size):
             dataset,
             batch_size=batch_size,
             shuffle=False,
+            num_workers=10
         )
     except:
         # Function to prepare DataLoader with DistributedSampler
@@ -62,6 +63,7 @@ def prepare_dataloader(dataset, batch_size):
             dataset,
             batch_size=batch_size,
             shuffle=False,
+            num_workers=10
         )
 
 def create_metrics_sequence(metrics: list):

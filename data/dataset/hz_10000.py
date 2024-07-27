@@ -39,10 +39,10 @@ import multiprocessing
 import h5py
 
 def process_and_save_user_data(args):
-    idx, self = args
+    idx, self, lock, txt_file = args
     print(f"Preparing index for user {idx}")
     self.all_data[idx] = {}
-    
+
     left_frame_stack, left_event_stack, left_labels = self.collect_data(idx, 0)
     right_frame_stack, right_event_stack, right_labels = self.collect_data(idx, 1)
 
@@ -58,68 +58,45 @@ def process_and_save_user_data(args):
     left_eye_indexes = self.find_index_list(left_labels)
     right_eye_indexes = self.find_index_list(right_labels)
 
-    data_list = []
-    label_list = []
-
     for timestamp_index in tqdm(left_eye_indexes):
         data, label = self.get_item(left_eye_data, left_labels, timestamp_index)
-        data_list.append(data)
-        label_list.append(label)
+        data_array = np.array(data)
+        label_array = np.array(label)
+
+        left_data_filename = f'{self.cache_data_dir}/{idx}_left_{timestamp_index}_data.h5'
+        left_label_filename = f'{self.cache_data_dir}/{idx}_left_{timestamp_index}_label.h5'
+
+        with h5py.File(left_data_filename, 'w') as hf:
+            hf.create_dataset('data', data=data_array, compression='gzip')
+
+        with h5py.File(left_label_filename, 'w') as hf:
+            hf.create_dataset('labels', data=label_array, compression='gzip')
+
+        with lock:
+            with open(txt_file, 'a') as f:
+                f.write(f'{left_data_filename}\n')
 
     for timestamp_index in tqdm(right_eye_indexes):
         data, label = self.get_item(right_eye_data, right_labels, timestamp_index)
-        data_list.append(data)
-        label_list.append(label)
+        data_array = np.array(data)
+        label_array = np.array(label)
 
-    data_array = np.array(data_list)
-    label_array = np.array(label_list)
+        right_data_filename = f'{self.cache_data_dir}/{idx}_right_{timestamp_index}_data.h5'
+        right_label_filename = f'{self.cache_data_dir}/{idx}_right_{timestamp_index}_label.h5'
 
-    with h5py.File(f'{self.cache_data_dir}/{idx}_data.h5', 'w') as hf:
-        hf.create_dataset('data', data=data_array, compression='gzip')
-        hf.create_dataset('labels', data=label_array, compression='gzip')
+        with h5py.File(right_data_filename, 'w') as hf:
+            hf.create_dataset('data', data=data_array, compression='gzip')
+
+        with h5py.File(right_label_filename, 'w') as hf:
+            hf.create_dataset('labels', data=label_array, compression='gzip')
+
+        with lock:
+            with open(txt_file, 'a') as f:
+                f.write(f'{right_data_filename}\n')
 
     return idx
 
-# def process_and_save_user_data(args):
-#         idx, self = args
-#         print(f"Preparing index for user {idx}")
-#         self.all_data[idx] = {}
-        
-#         left_frame_stack, left_event_stack, left_labels = self.collect_data(idx, 0)
-#         right_frame_stack, right_event_stack, right_labels = self.collect_data(idx, 1)
 
-#         left_pols, left_xs, left_ys, left_ts = extract_event_components(left_event_stack)
-#         right_pols, right_xs, right_ys, right_ts = extract_event_components(right_event_stack)
-
-#         left_eye_data = make_structured_array(left_ts, left_xs, left_ys, left_pols, dtype=events_struct)
-#         right_eye_data = make_structured_array(right_ts, right_xs, right_ys, right_pols, dtype=events_struct)
-
-#         left_eye_data = self.input_transform(left_eye_data)
-#         right_eye_data = self.input_transform(right_eye_data)
-
-#         left_eye_indexes = self.find_index_list(left_labels)
-#         right_eye_indexes = self.find_index_list(right_labels)
-
-#         data_list = []
-#         label_list = []
-
-#         for timestamp_index in tqdm(left_eye_indexes):
-#             data, label = self.get_item(left_eye_data, left_labels, timestamp_index)
-#             data_list.append(data)
-#             label_list.append(label)
-
-#         for timestamp_index in tqdm(right_eye_indexes):
-#             data, label = self.get_item(right_eye_data, right_labels, timestamp_index)
-#             data_list.append(data)
-#             label_list.append(label)
-
-#         data_array = np.array(data_list)
-#         label_array = np.array(label_list)
-
-#         np.save(f'{self.cache_data_dir}/{idx}_data.npy', data_array)
-#         np.save(f'{self.cache_data_dir}/{idx}_labels.npy', label_array)
-
-#         return idx
         
 def find_closest_index(df, target, start_time, end_time = None, return_last = False):
     # Create a copy of the DataFrame
@@ -248,16 +225,35 @@ class DatasetHz10000:
         self.merged_data = []
         self.merged_labels = []
         self.avg_dt = 0
+        self.file_list = self.read_file_list()
 
     def prepare_unstructured_data(self, data_idx=None):
         if data_idx is None:
             data_idx = self.data_idx
+
+        manager = mp.Manager()
+        lock = manager.Lock()
+
+        txt_file = f'{self.cache_data_dir}/{self.split}.txt'
+
         pool = mp.Pool(mp.cpu_count())
-        args = [(idx, self) for idx in data_idx]
+        args = [(idx, self, lock, txt_file) for idx in data_idx]
+
         for idx in pool.imap_unordered(process_and_save_user_data, args):
             print(f"Finished processing and saving data for user {idx}")
+
         pool.close()
         pool.join()
+
+    # def prepare_unstructured_data(self, data_idx=None):
+    #     if data_idx is None:
+    #         data_idx = self.data_idx
+    #     pool = mp.Pool(mp.cpu_count())
+    #     args = [(idx, self) for idx in data_idx]
+    #     for idx in pool.imap_unordered(process_and_save_user_data, args):
+    #         print(f"Finished processing and saving data for user {idx}")
+    #     pool.close()
+    #     pool.join()
 
     def find_index_list(self, label):
 
@@ -390,21 +386,27 @@ class DatasetHz10000:
 
     def __repr__(self):
         return self.__class__.__name__
-
+    
+    def read_file_list(self):
+            txt_file = f'{self.cache_data_dir}/{self.split}.txt'
+            with open(txt_file, 'r') as f:
+                file_list = f.read().splitlines()
+            return file_list
+    
     def __len__(self):
-        return len(self.all_event)
-
+        return len(self.file_list)
+    
     def __getitem__(self, index):
-        
-        if(index < len(self.all_data_first_half)):
-            relative_index = index
-            event = self.all_data_first_half[relative_index]
-            label = self.all_labels_first_half[relative_index]    
-            label = self.target_transform(label)
-        else:
-            relative_index = index - len(self.all_data_first_half)
-            event = self.all_data_second_half[relative_index]
-            label = self.all_labels_second_half[relative_index]    
+        data_filename = self.file_list[index]
+        label_filename = data_filename.replace('_data.h5', '_label.h5')
+
+        with h5py.File(data_filename, 'r') as hf:
+            event = hf['data'][:]
+
+        with h5py.File(label_filename, 'r') as hf:
+            label = hf['labels'][:]
+
+        if self.target_transform is not None:
             label = self.target_transform(label)
 
         data = torch.tensor(event, dtype=torch.float32)

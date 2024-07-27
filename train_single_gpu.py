@@ -179,7 +179,7 @@ if __name__ == "__main__":
     torch.autograd.set_detect_anomaly(True)
     torch.multiprocessing.set_start_method("spawn", force=True)
     torch.set_default_dtype(torch.float32)
-    torch.set_default_device("cuda:4")
+    torch.set_default_device("cuda")
     torch.set_num_threads(10)
     torch.set_num_interop_threads(10)
 
@@ -193,16 +193,16 @@ if __name__ == "__main__":
     train_dataset = DynamicDatasetHz10000(split="train", config_params=config_params, cache_size = 5)  # Example dataset
     # val_dataset = DynamicDatasetHz10000(split="val", config_params=config_params, cache_size = 5)  # Example dataset
     # test_dataset = DatasetHz10000(split="test", config_params=config_params)  # Example dataset
-    cache = dataset_params["use_cache"]
-    if cache == False:
-        train_dataset.prepare_unstructured_data()
-        # val_dataset.prepare_unstructured_data()
-    else:
-        # train_dataset.load_cached_data([1, 2])
-        pass
+    # cache = dataset_params["use_cache"]
+    # if cache == False:
+    #     train_dataset.prepare_unstructured_data()
+    #     # val_dataset.prepare_unstructured_data()
+    # else:
+    #     # train_dataset.load_cached_data([1, 2])
+    #     pass
     if short_train:
         train_dataset = torch.utils.data.Subset(train_dataset, range(100))
-        val_dataset = torch.utils.data.Subset(val_dataset, range(100))
+        # val_dataset = torch.utils.data.Subset(val_dataset, range(100))
         # test_dataset = torch.utils.data.Subset(val_dataset, range(100))
 
     main(train_dataset, None, None, dataset_params, training_params)

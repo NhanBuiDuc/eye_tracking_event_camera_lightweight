@@ -48,8 +48,8 @@ class Trainer(ABC):
         self.snapshot_path = snapshot_path
         self.epochs_run = 0
 
-    def train(self, max_epochs):
-        for epoch in range(self.epochs_run, max_epochs):
+    def train(self, start_epoch, max_epochs):
+        for epoch in range(start_epoch, max_epochs):
             self._run_epoch(epoch, max_epochs)
             self._save_snapshot(epoch)
 
@@ -104,23 +104,22 @@ class Trainer(ABC):
                     out, hidden_states = self.model(data[:, t, :, :, :].view(b, 1, *data.shape[2:]), None)
                 else:
                     out, hidden_states = self.model(data[:, t, :, :, :].view(b, 1, *data.shape[2:]), hidden_states)
-
                 timestep_outputs.append(out)
 
             # Convert timestep_outputs to a tensor
-            output = torch.stack(timestep_outputs)
+            output = torch.stack(timestep_outputs).float()
             
             # Ensure the output tensor is contiguous before using view
-            output = output.contiguous()
+            output = output.contiguous().float()
             
             # Use view to reshape the tensor to the desired shape
-            output = output.view(target.shape)
+            output = output.view(target.shape).float()
             outputs.append(output.cpu().detach().numpy())
             targets.append(target.cpu().detach().numpy())
             # gpus.append(self.gpu_id)
 
             total_loss, loss_dict = self.criterions(output.float(), target.float())
-
+            total_loss.to(self.gpu_id)
             # if self.gpu_id == 0:
             for loss in loss_dict:
                 print(f"{(loss)} Train Loss: ", loss_dict[loss])

@@ -20,6 +20,9 @@ from loss.loss_base import Loss, LossSequence
 from loss.YoloLoss import YoloLoss
 from model.simple_convlstm import SimpleConvLSTM
 import multiprocessing
+import re
+from metrics.AngularError import AngularError
+import numpy as np
 
 def setup_ddp(rank, world_size):
     # Set necessary environment variables
@@ -68,6 +71,8 @@ def create_metrics_sequence(metrics: list):
     for metric in metrics:
         if metric == "mean_squared_error":
             results.append(MeanSquaredError())
+        if metric == "angular_error":
+            results.append(AngularError(40))
     metrics_sequence = MetricSequence(results)
     return metrics_sequence
 
@@ -80,6 +85,65 @@ def create_losses_sequence(losses: list, dataset_params: dict, training_params: 
             results.append(nn.MSELoss())
     losses_sequence = LossSequence(results)
     return losses_sequence
+
+def load_checkpoint(snapshot_path, model, optimizer, epoch=None):
+    class_name = str(type(model)).split('.')[-1][:-2]  # Extract class name (e.g., 'Retina', 'SimpleConvLSTM')
+    
+    # List all files in the snapshot_path directory
+    all_files = os.listdir(snapshot_path)
+    
+    # Filter files that match the pattern "<class_name>_epoch_<number>.pt"
+    pattern = rf'{class_name}_epoch_(\d+)\.pt'
+    checkpoint_files = [f for f in all_files if re.match(pattern, f)]
+    
+    # Debugging print statement to see the files being matched
+    print(f"Matching checkpoint files: {checkpoint_files}")
+    
+    if not checkpoint_files:
+        # No checkpoints found, start from epoch 0
+        print(f"No checkpoints found for {class_name}. Starting from scratch.")
+        return model, optimizer, 0  
+    
+    if epoch is not None:
+        # Load the specified epoch
+        checkpoint_file = f'{class_name}_epoch_{epoch}.pt'
+        if checkpoint_file not in checkpoint_files:
+            raise FileNotFoundError(f"Checkpoint for epoch {epoch} not found.")
+    else:
+        # Extract epoch numbers from file names
+        epochs = [int(re.search(pattern, f).group(1)) for f in checkpoint_files]
+        
+        # Find the maximum epoch number
+        max_epoch = max(epochs)
+        
+        # Construct the checkpoint file name with the maximum epoch number
+        checkpoint_file = f'{class_name}_epoch_{max_epoch}.pt'
+    
+    # Load the checkpoint
+    checkpoint = torch.load(os.path.join(snapshot_path, checkpoint_file))
+    model.load_state_dict(checkpoint["MODEL_STATE"])
+    optimizer.load_state_dict(checkpoint["OPTIMIZER"])
+    
+    print(f"Loaded checkpoint '{checkpoint_file}' (epoch {epoch if epoch is not None else max_epoch}).")
+    
+    # Return the model, optimizer, and the next epoch number
+    next_epoch = (epoch + 1) if epoch is not None else (max_epoch + 1)
+    return model, optimizer, next_epoch
+
+def read_output_target(folder_path):
+    output_arrays = []
+    target_arrays = []
+    
+    for file_name in os.listdir(folder_path):
+        if file_name.endswith('.npy'):
+            if 'output' in file_name:
+                array = np.load(os.path.join(folder_path, file_name))
+                output_arrays.append(array)
+            elif 'target' in file_name:
+                array = np.load(os.path.join(folder_path, file_name))
+                target_arrays.append(array)
+    
+    return output_arrays, target_arrays
 
 def main(train_dataset, val_dataset, test_dataset, dataset_params, training_params):
 
@@ -145,7 +209,7 @@ def main(train_dataset, val_dataset, test_dataset, dataset_params, training_para
 
     criterions_sequence = create_losses_sequence(losses, dataset_params, training_params)
     metrics_sequence = create_metrics_sequence(metrics)
-
+    model, optimizer, start_epoch = load_checkpoint(snapshot_path, model, optimizer)
 
     # test_dataset = Ini30Dataset(split="test", config_json_path=config_params)  # Example dataset
     dataloader_list = []
@@ -162,6 +226,15 @@ def main(train_dataset, val_dataset, test_dataset, dataset_params, training_para
     # trainer.train(num_epochs)
     # thread.join()
     trainer.evaluate()
+    folder_path = 'cache/train'
+    output_arrays, target_arrays = read_output_target(folder_path)
+    outputs = np.concatenate(output_arrays, axis=0)
+    targets = np.concatenate(target_arrays, axis=0)
+
+    outputs = torch.tensor(outputs)
+    targets = torch.tensor(targets)
+    metrics_sequence(outputs, targets)
+    metrics_sequence.to_csv(path="log/metrics.csv", keys_to_log=["mean_horizontal_error", "mean_vertical_error"])
 
 if __name__ == "__main__":
     # Example function to load your dataset, model, and optimizer
@@ -184,12 +257,7 @@ if __name__ == "__main__":
     val_dataset = DatasetHz10000(split="val", config_params=config_params)  # Example dataset
     test_dataset = DatasetHz10000(split="test", config_params=config_params)  # Example dataset
     cache = dataset_params["use_cache"]
-    if cache == False:
-        train_dataset.prepare_unstructured_data()
-        val_dataset.prepare_unstructured_data()
-    else:
-        index = [22]
-        val_dataset.load_cached_data(index)
+    val_dataset.read_file_list()
     if short_train:
         train_dataset = torch.utils.data.Subset(train_dataset, range(100))
         val_dataset = torch.utils.data.Subset(val_dataset, range(100))

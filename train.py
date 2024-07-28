@@ -167,7 +167,6 @@ if __name__ == "__main__":
     torch.autograd.set_detect_anomaly(True)
     torch.multiprocessing.set_start_method("spawn", force=True)
     torch.set_default_dtype(torch.float32)
-    torch.set_default_device("cuda")
     torch.set_num_threads(10)
     torch.set_num_interop_threads(10)
     # dist.init_process_group("nccl")
@@ -192,7 +191,7 @@ if __name__ == "__main__":
     train_dataset = DatasetHz10000(split="train", config_params=config_params)  # Example dataset
     val_dataset = DatasetHz10000(split="val", config_params=config_params)  # Example dataset
     # test_dataset = DatasetHz10000(split="test", config_params=config_params)  # Example dataset
-        
+    torch.set_default_device(training_params["device"])
     cache = dataset_params["use_cache"]
     if cache == False:
         train_dataset.prepare_unstructured_data()

@@ -1,5 +1,6 @@
 from data.dataset.ini_30_dataset import Ini30Dataset
 from data.dataset.DynamicDataset import DynamicDatasetHz10000
+from data.dataset.hz_10000 import DatasetHz10000
 import torch
 import json
 from model.B_3ET import Baseline_3ET
@@ -21,6 +22,7 @@ from loss.YoloLoss import YoloLoss
 from model.simple_convlstm import SimpleConvLSTM
 import multiprocessing
 from metrics.AngularError import AngularError
+import re
 
 def setup_ddp(rank, world_size):
     # Set necessary environment variables
@@ -86,6 +88,50 @@ def create_losses_sequence(losses: list, dataset_params: dict, training_params: 
     losses_sequence = LossSequence(results)
     return losses_sequence
 
+def load_checkpoint(snapshot_path, model, optimizer, epoch=None):
+    class_name = str(type(model)).split('.')[-1][:-2]  # Extract class name (e.g., 'Retina', 'SimpleConvLSTM')
+    
+    # List all files in the snapshot_path directory
+    all_files = os.listdir(snapshot_path)
+    
+    # Filter files that match the pattern "<class_name>_epoch_<number>.pt"
+    pattern = rf'{class_name}_epoch_(\d+)\.pt'
+    checkpoint_files = [f for f in all_files if re.match(pattern, f)]
+    
+    # Debugging print statement to see the files being matched
+    print(f"Matching checkpoint files: {checkpoint_files}")
+    
+    if not checkpoint_files:
+        # No checkpoints found, start from epoch 0
+        print(f"No checkpoints found for {class_name}. Starting from scratch.")
+        return model, optimizer, 0  
+    
+    if epoch is not None:
+        # Load the specified epoch
+        checkpoint_file = f'{class_name}_epoch_{epoch}.pt'
+        if checkpoint_file not in checkpoint_files:
+            raise FileNotFoundError(f"Checkpoint for epoch {epoch} not found.")
+    else:
+        # Extract epoch numbers from file names
+        epochs = [int(re.search(pattern, f).group(1)) for f in checkpoint_files]
+        
+        # Find the maximum epoch number
+        max_epoch = max(epochs)
+        
+        # Construct the checkpoint file name with the maximum epoch number
+        checkpoint_file = f'{class_name}_epoch_{max_epoch}.pt'
+    
+    # Load the checkpoint
+    checkpoint = torch.load(os.path.join(snapshot_path, checkpoint_file))
+    model.load_state_dict(checkpoint["MODEL_STATE"])
+    optimizer.load_state_dict(checkpoint["OPTIMIZER"])
+    
+    print(f"Loaded checkpoint '{checkpoint_file}' (epoch {epoch if epoch is not None else max_epoch}).")
+    
+    # Return the model, optimizer, and the next epoch number
+    next_epoch = (epoch + 1) if epoch is not None else (max_epoch + 1)
+    return model, optimizer, next_epoch
+
 def main(train_dataset, val_dataset, test_dataset, dataset_params, training_params):
 
     # # Create a thread to run the load_cached_data method
@@ -105,10 +151,10 @@ def main(train_dataset, val_dataset, test_dataset, dataset_params, training_para
     device = training_params["device"]
     # load_checkpoint = training_params["load_checkpoint"]
     save_every = 1
-    snapshot_path = "checkpoints/SimpleConvLSTM_epoch_0.pt"
+    snapshot_path = "checkpoints"
     # Create a Path object
     path = Path(snapshot_path)
-    path.mkdir(parents=True, exist_ok=True)
+    Path(snapshot_path).mkdir(parents=True, exist_ok=True)
 
     if arch_name == "3ET":
         model = Baseline_3ET(
@@ -151,16 +197,7 @@ def main(train_dataset, val_dataset, test_dataset, dataset_params, training_para
 
     criterions_sequence = create_losses_sequence(losses, dataset_params, training_params)
     metrics_sequence = create_metrics_sequence(metrics)
-    # start_epoch = 0
-    # if load_checkpoint and os.path.exists(snapshot_path):
-    #         print(f"Checkpoint found at '{snapshot_path}'. Loading checkpoint.")
-    #         snapshot = torch.load(snapshot_path)
-    #         model.load_state_dict(snapshot["MODEL_STATE"])
-    #         optimizer.load_state_dict(snapshot["OPTIMIZER"])  # Ensure optimizer state is saved
-    #         start_epoch = snapshot["EPOCHS_RUN"]
-    #         print(f"Checkpoint loaded. Resuming training from epoch {start_epoch}.")
-
-    # test_dataset = Ini30Dataset(split="test", config_json_path=config_params)  # Example dataset
+    model, optimizer, start_epoch = load_checkpoint(snapshot_path, model, optimizer)
     dataloader_list = []
 
     train_dataloader = prepare_dataloader(train_dataset, batch_size)
@@ -170,8 +207,8 @@ def main(train_dataset, val_dataset, test_dataset, dataset_params, training_para
     dataloader_list.append(val_dataloader)
     dataloader_list.append(test_dataloader)
     # train_dataloader = prepare_dataloader(train_dataset, batch_size)
-    trainer = Trainer(model, device, dataloader_list, optimizer, scheduler, criterions_sequence, metrics_sequence, save_every, snapshot_path)
-    trainer.train(num_epochs)
+    trainer = Trainer(model.to(device) , device, dataloader_list, optimizer, scheduler, criterions_sequence, metrics_sequence, save_every, snapshot_path)
+    trainer.train(start_epoch, num_epochs)
     # thread.join()
     # trainer.evaluate()
 
@@ -181,7 +218,6 @@ if __name__ == "__main__":
     torch.autograd.set_detect_anomaly(True)
     torch.multiprocessing.set_start_method("spawn", force=True)
     torch.set_default_dtype(torch.float32)
-    torch.set_default_device("cuda")
     torch.set_num_threads(10)
     torch.set_num_interop_threads(10)
 
@@ -192,7 +228,7 @@ if __name__ == "__main__":
     dataset_params = config_params["dataset_params"]
     training_params = config_params["training_params"]
     short_train = False
-    train_dataset = DynamicDatasetHz10000(split="train", config_params=config_params, cache_size = 5)  # Example dataset
+    train_dataset = DatasetHz10000(split="train", config_params=config_params)  # Example dataset
     # val_dataset = DynamicDatasetHz10000(split="val", config_params=config_params, cache_size = 5)  # Example dataset
     # test_dataset = DatasetHz10000(split="test", config_params=config_params)  # Example dataset
     # cache = dataset_params["use_cache"]
@@ -202,6 +238,7 @@ if __name__ == "__main__":
     # else:
     #     # train_dataset.load_cached_data([1, 2])
     #     pass
+    torch.set_default_device(training_params["device"])
     train_dataset.read_file_list()
     if short_train:
         train_dataset = torch.utils.data.Subset(train_dataset, range(100))

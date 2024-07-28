@@ -387,11 +387,10 @@ class DatasetHz10000:
         return self.__class__.__name__
     
     def read_file_list(self):
-            txt_file = f'{self.cache_data_dir}/{self.split}.txt'
-            with open(txt_file, 'r') as f:
-                file_list = f.read().splitlines()
-            return file_list
-    
+        txt_file = f'{self.cache_data_dir}/{self.split}.txt'
+        with open(txt_file, 'r') as f:
+            self.file_list = f.read().splitlines()
+      
     def __len__(self):
         return len(self.file_list)
     
@@ -408,8 +407,8 @@ class DatasetHz10000:
         if self.target_transform is not None:
             label = self.target_transform(label)
 
-        data = torch.tensor(event, dtype=torch.float32)
-        label = torch.tensor(label, dtype=torch.float32)
+        data = torch.tensor(event)
+        label = torch.tensor(label)
 
         return data, label
 

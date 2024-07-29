@@ -38,6 +38,65 @@ from threading import Lock
 import multiprocessing
 import h5py
 
+# def process_and_save_user_data(args):
+#     idx, self, lock, txt_file = args
+#     print(f"Preparing index for user {idx}")
+#     self.all_data[idx] = {}
+
+#     left_frame_stack, left_event_stack, left_labels = self.collect_data(idx, 0)
+#     right_frame_stack, right_event_stack, right_labels = self.collect_data(idx, 1)
+
+#     left_pols, left_xs, left_ys, left_ts = extract_event_components(left_event_stack)
+#     right_pols, right_xs, right_ys, right_ts = extract_event_components(right_event_stack)
+
+#     left_eye_data = make_structured_array(left_ts, left_xs, left_ys, left_pols, dtype=events_struct)
+#     right_eye_data = make_structured_array(right_ts, right_xs, right_ys, right_pols, dtype=events_struct)
+
+#     left_eye_data = self.input_transform(left_eye_data)
+#     right_eye_data = self.input_transform(right_eye_data)
+
+#     left_eye_indexes = self.find_index_list(left_labels)
+#     right_eye_indexes = self.find_index_list(right_labels)
+
+#     for timestamp_index in tqdm(left_eye_indexes):
+#         data, label = self.get_item(left_eye_data, left_labels, timestamp_index)
+#         data_array = np.array(data)
+#         label_array = np.array(label)
+
+#         left_data_filename = f'{self.cache_data_dir}/{idx}_left_{timestamp_index}_data.h5'
+#         left_label_filename = f'{self.cache_data_dir}/{idx}_left_{timestamp_index}_label.h5'
+
+#         with h5py.File(left_data_filename, 'w') as hf:
+#             hf.create_dataset('data', data=data_array, compression='gzip')
+
+#         with h5py.File(left_label_filename, 'w') as hf:
+#             hf.create_dataset('labels', data=label_array, compression='gzip')
+
+#         with lock:
+#             with open(txt_file, 'a') as f:
+#                 f.write(f'{left_data_filename}\n')
+
+#     for timestamp_index in tqdm(right_eye_indexes):
+#         data, label = self.get_item(right_eye_data, right_labels, timestamp_index)
+#         data_array = np.array(data)
+#         label_array = np.array(label)
+
+#         right_data_filename = f'{self.cache_data_dir}/{idx}_right_{timestamp_index}_data.h5'
+#         right_label_filename = f'{self.cache_data_dir}/{idx}_right_{timestamp_index}_label.h5'
+
+#         with h5py.File(right_data_filename, 'w') as hf:
+#             hf.create_dataset('data', data=data_array, compression='gzip')
+
+#         with h5py.File(right_label_filename, 'w') as hf:
+#             hf.create_dataset('labels', data=label_array, compression='gzip')
+
+#         with lock:
+#             with open(txt_file, 'a') as f:
+#                 f.write(f'{right_data_filename}\n')
+
+#     return idx
+
+
 def process_and_save_user_data(args):
     idx, self, lock, txt_file = args
     print(f"Preparing index for user {idx}")
@@ -55,49 +114,45 @@ def process_and_save_user_data(args):
     left_eye_data = self.input_transform(left_eye_data)
     right_eye_data = self.input_transform(right_eye_data)
 
-    left_eye_indexes = self.find_index_list(left_labels)
-    right_eye_indexes = self.find_index_list(right_labels)
+    batch_left_data, batch_left_label = self.load_static_window(left_eye_data, left_labels)
+    batch_right_data, batch_right_label = self.load_static_window(left_eye_data, left_labels)
 
-    for timestamp_index in tqdm(left_eye_indexes):
-        data, label = self.get_item(left_eye_data, left_labels, timestamp_index)
-        data_array = np.array(data)
-        label_array = np.array(label)
+    for i, (data_item, label_item) in tqdm(enumerate(zip(batch_left_data, batch_left_label)), total=len(batch_left_data)):
+            data_array = np.array(data_item)
+            label_array = np.array(label_item)
 
-        left_data_filename = f'{self.cache_data_dir}/{idx}_left_{timestamp_index}_data.h5'
-        left_label_filename = f'{self.cache_data_dir}/{idx}_left_{timestamp_index}_label.h5'
+            data_filename = f'{self.cache_data_dir}/{idx}_left_{i}_data.h5'
+            label_filename = f'{self.cache_data_dir}/{idx}_left_{i}_label.h5'
 
-        with h5py.File(left_data_filename, 'w') as hf:
-            hf.create_dataset('data', data=data_array, compression='gzip')
+            with h5py.File(data_filename, 'w') as hf:
+                hf.create_dataset('data', data=data_array, compression='gzip')
 
-        with h5py.File(left_label_filename, 'w') as hf:
-            hf.create_dataset('labels', data=label_array, compression='gzip')
+            with h5py.File(label_filename, 'w') as hf:
+                hf.create_dataset('labels', data=label_array, compression='gzip')
 
-        with lock:
-            with open(txt_file, 'a') as f:
-                f.write(f'{left_data_filename}\n')
+            with lock:
+                with open(txt_file, 'a') as f:
+                    f.write(f'{data_filename}\n')
 
-    for timestamp_index in tqdm(right_eye_indexes):
-        data, label = self.get_item(right_eye_data, right_labels, timestamp_index)
-        data_array = np.array(data)
-        label_array = np.array(label)
+    for i, (data_item, label_item) in tqdm(enumerate(zip(batch_right_data, batch_right_label)), total=len(batch_right_data)):
+            data_array = np.array(data_item)
+            label_array = np.array(label_item)
 
-        right_data_filename = f'{self.cache_data_dir}/{idx}_right_{timestamp_index}_data.h5'
-        right_label_filename = f'{self.cache_data_dir}/{idx}_right_{timestamp_index}_label.h5'
+            data_filename = f'{self.cache_data_dir}/{idx}_left_{i}_data.h5'
+            label_filename = f'{self.cache_data_dir}/{idx}_left_{i}_label.h5'
 
-        with h5py.File(right_data_filename, 'w') as hf:
-            hf.create_dataset('data', data=data_array, compression='gzip')
+            with h5py.File(data_filename, 'w') as hf:
+                hf.create_dataset('data', data=data_array, compression='gzip')
 
-        with h5py.File(right_label_filename, 'w') as hf:
-            hf.create_dataset('labels', data=label_array, compression='gzip')
+            with h5py.File(label_filename, 'w') as hf:
+                hf.create_dataset('labels', data=label_array, compression='gzip')
 
-        with lock:
-            with open(txt_file, 'a') as f:
-                f.write(f'{right_data_filename}\n')
+            with lock:
+                with open(txt_file, 'a') as f:
+                    f.write(f'{data_filename}\n')
 
     return idx
 
-
-        
 def find_closest_index(df, target, start_time, end_time = None, return_last = False):
     # Create a copy of the DataFrame
     df = df.copy()
@@ -556,6 +611,13 @@ class DatasetHz10000:
         return np.array(data_temp).astype(np.float32), np.array(np.column_stack((x_axis, y_axis))).astype(np.float32)
         
     def load_static_window(self, data, labels):
+        data = {
+            "xy": np.hstack(
+                [data["x"].reshape(-1, 1), data["y"].reshape(-1, 1)]
+            ),
+            "p": data["p"] * 1,
+            "t": data["t"],
+        }
         # label start and last
         tab_start, tab_last = labels.iloc[0], labels.iloc[-1]
         # start_label = (int(tab_start.row.item()), int(tab_start.col.item()))
@@ -642,49 +704,10 @@ class DatasetHz10000:
             
             batch_data.append(data_temp)
             batch_label.append(np.column_stack((x_axis, y_axis)))
-            try:
-                # # Equal head and tail
 
-                if switch == 0:
-                    idx = find_closest_index(labels, [x_axis[-1], y_axis[-1]], return_last=False) - 2
-                    start_time = labels["timestamp"].iloc[idx]   
-                    end_time = start_time + self.fixed_window_dt * self.num_bins
-                # # small head and big tail
+            start_time = end_time
+            end_time = start_time + self.fixed_window_dt * self.num_bins                
 
-                # elif switch == 1:
-                #     idx = idx + 1
-                #     start_time = labels["timestamp"].iloc[idx]   
-                #     end_time = start_time + self.fixed_window_dt * self.num_bins
-                #     switch = 2
-
-                # # Mono data
-                # elif switch == 2:
-                #     idx = idx + 1
-                #     start_time = labels["timestamp"].iloc[idx]   
-                #     end_time = start_time + self.fixed_window_dt * self.num_bins
-                #     switch = 3
-                # # big head and small tail
-                # elif switch == 3:
-                #     idx = idx + 2
-                #     start_time = labels["timestamp"].iloc[idx]   
-                #     end_time = start_time + self.fixed_window_dt * self.num_bins
-                #     switch = 0
-
-            except:
-                start_time = end_time
-                end_time = start_time + self.fixed_window_dt * self.num_bins                
-
-            # if skip == False:             
-
-            # else:
-            #     # idx = find_closest_index(labels, [0, 0], end_time, return_last=False)
-            #     # start_time = labels["timestamp"].iloc[idx]   
-            #     # end_time = start_time + self.fixed_window_dt * self.num_bins
-            #     #                 idx = np.searchsorted(labels["timestamp"], fixed_tmp, side="left")
-            #     pass
-        # batch_data = torch.stack(batch_data)
-        # batch_label = torch.stack(batch_label)
-            # break
         return np.array(batch_data).astype(np.float32), np.array(batch_label).astype(np.float32)
 
     def load_dynamic_window(self, data, labels):

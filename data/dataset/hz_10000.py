@@ -290,6 +290,10 @@ class DatasetHz10000:
 
         txt_file = f'{self.cache_data_dir}/{self.split}.txt'
 
+        # Remove the text file if it already exists
+        if os.path.exists(txt_file):
+            os.remove(txt_file)
+
         pool = mp.Pool(mp.cpu_count())
         args = [(idx, self, lock, txt_file) for idx in data_idx]
 

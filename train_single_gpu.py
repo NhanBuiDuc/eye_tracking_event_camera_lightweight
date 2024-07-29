@@ -21,6 +21,7 @@ from loss.loss_base import Loss, LossSequence
 from loss.YoloLoss import YoloLoss
 from model.simple_convlstm import SimpleConvLSTM
 from model.simple_convlstm1 import SimpleConvLSTM1
+from model.simple_convlstm2 import SimpleConvLSTM2
 import multiprocessing
 from metrics.AngularError import AngularError
 import re
@@ -179,6 +180,12 @@ def main(train_dataset, val_dataset, test_dataset, dataset_params, training_para
             width=dataset_params["img_width"],
             input_dim=dataset_params["input_channel"]
         )
+    elif arch_name == "LSTM2": 
+        model = SimpleConvLSTM2(
+            height=dataset_params["img_height"],
+            width=dataset_params["img_width"],
+            input_dim=dataset_params["input_channel"]
+        )
     # Initialize Optimizer
     if training_params["optimizer"] == "Adam":
         optimizer = torch.optim.Adam(
@@ -228,7 +235,7 @@ if __name__ == "__main__":
     torch.set_num_threads(10)
     torch.set_num_interop_threads(10)
 
-    config_path = "config/evb_eye1.json"
+    config_path = "config/evb_eye2.json"
     if config_path is not None:
         with open(config_path, 'r') as f:
             config_params = json.load(f)

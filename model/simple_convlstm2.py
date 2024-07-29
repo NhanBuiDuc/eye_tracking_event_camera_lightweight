@@ -20,7 +20,7 @@ from torch.utils.data import Dataset, DataLoader
 
 class Attention(nn.Module):
     def __init__(self, input_dim, hidden_dim):
-        super(SimpleAttention, self).__init__()
+        super(Attention, self).__init__()
         self.conv = nn.Conv2d(input_dim, hidden_dim, kernel_size=1)
         
     def forward(self, input_tensor):
@@ -141,7 +141,8 @@ class ConvLSTM(nn.Module):
                                           bias=self.bias))
 
         self.cell_list = nn.ModuleList(cell_list)
-        self.attention = SimpleAttention(input_dim, hidden_dim[-1])
+        self.attention = Attention(input_dim, hidden_dim[-1])
+        
     def forward(self, input_tensor, hidden_state=None):
         """
 
@@ -238,7 +239,7 @@ class SimpleConvLSTM2(nn.Module):
         self.bn3 = nn.BatchNorm3d(32)
         self.pool3 = nn.MaxPool3d(kernel_size=(1, 2, 2))
 
-        self.fc1 = nn.Linear(256, 156)
+        self.fc1 = nn.Linear(2048, 156)
         self.drop = nn.Dropout(0.5)
         self.fc2 = nn.Linear(156, 2)
         # get_summary(self)
@@ -280,14 +281,6 @@ class SimpleConvLSTM2(nn.Module):
         x = F.relu(x)
         x = self.pool3(x)
         hidden_states.append(h3)
-
-        x = x.permute(0, 2, 1, 3, 4)
-        x, h6 = self.convlstm6(x, h6)
-        x = x[0].permute(0, 2, 1, 3, 4)
-        x = self.bn6(x)
-        x = F.relu(x)
-        x = self.pool6(x)
-        hidden_states.append(h6)
 
         # Flatten and apply LSTM layer
         b, c, seq, h, w = x.size()

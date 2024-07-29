@@ -225,8 +225,8 @@ def main(train_dataset, val_dataset, test_dataset, dataset_params, training_para
     trainer = Trainer(model, device, dataloader_list, optimizer, scheduler, criterions_sequence, metrics_sequence, save_every, snapshot_path)
     # trainer.train(num_epochs)
     # thread.join()
-    trainer.evaluate()
-    folder_path = 'cache/train'
+    # trainer.evaluate()
+    folder_path = 'cache/eval'
     output_arrays, target_arrays = read_output_target(folder_path)
     outputs = np.concatenate(output_arrays, axis=0)
     targets = np.concatenate(target_arrays, axis=0)

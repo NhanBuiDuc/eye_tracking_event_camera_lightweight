@@ -13,4 +13,4 @@ if __name__ == "__main__":
     val_dataset = DatasetHz10000(split="val", config_params=config_params)  # Example dataset
 # 
     train_dataset.prepare_unstructured_data()
-    # val_dataset.prepare_unstructured_data()
+    val_dataset.prepare_unstructured_data()

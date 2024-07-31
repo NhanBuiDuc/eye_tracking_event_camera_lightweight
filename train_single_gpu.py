@@ -221,7 +221,7 @@ def main(train_dataset, val_dataset, test_dataset, dataset_params, training_para
     dataloader_list.append(val_dataloader)
     dataloader_list.append(test_dataloader)
     # train_dataloader = prepare_dataloader(train_dataset, batch_size)
-    trainer = Trainer(model.to(device) , device, dataloader_list, optimizer, scheduler, criterions_sequence, metrics_sequence, save_every, snapshot_path)
+    trainer = Trainer(dataset_params, model.to(device) , device, dataloader_list, optimizer, scheduler, criterions_sequence, metrics_sequence, save_every, snapshot_path)
     trainer.train(start_epoch, num_epochs)
     # thread.join()
     # trainer.evaluate()

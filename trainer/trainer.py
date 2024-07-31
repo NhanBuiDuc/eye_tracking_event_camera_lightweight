@@ -8,13 +8,15 @@ import csv
 import numpy as np
 from pathlib import Path
 from tqdm import tqdm
+from collections import deque
 
 class Trainer(ABC):
     """
     An abstract base class for distributed training across multiple GPUs.
     """
 
-    def __init__(self, 
+    def __init__(self,
+                dataset_params,
                 model,
                 gpu_id,
                 dataloader_list,
@@ -34,6 +36,7 @@ class Trainer(ABC):
             criterion (torch.nn.Module): The loss function.
             device_ids (list): List of GPU device IDs to use for training.
         """
+        self.dataset_params = dataset_params
         self.gpu_id = gpu_id  # Will be set during DDP setup
         self.model = model.to(self.gpu_id)  # Move model to GPU
         self.train_data_loader = dataloader_list[0]
@@ -47,6 +50,7 @@ class Trainer(ABC):
         self.save_every = save_every
         self.snapshot_path = snapshot_path
         self.epochs_run = 0
+        self.num_bins = dataset_params["num_bins"]
 
     def train(self, start_epoch, max_epochs):
         for epoch in range(start_epoch, max_epochs):
@@ -89,43 +93,38 @@ class Trainer(ABC):
         # self.train_data_loader.sampler.set_epoch(epoch)
         outputs = []
         targets = []
+        output = None
+        hidden = None
+        source_buffer = deque(maxlen=self.num_bins)
         # gpus = []
         for source, target in tqdm(self.train_data_loader):
             b, seq_len, c = target.shape
-            timestep_outputs = []
-
             source = source.to(self.gpu_id).float()
             target = target.to(self.gpu_id).float()
             self.optimizer.zero_grad()
-            data = source.clone()
-            for t in range(seq_len):
-
-                if t == 0:
-                    out, hidden_states = self.model(data[:, t, :, :, :].view(b, 1, *data.shape[2:]), None)
-                else:
-                    out, hidden_states = self.model(data[:, t, :, :, :].view(b, 1, *data.shape[2:]), hidden_states)
-                timestep_outputs.append(out)
-
-            # Convert timestep_outputs to a tensor
-            output = torch.stack(timestep_outputs).float()
+            source_buffer.append(source)
             
-            # Ensure the output tensor is contiguous before using view
-            output = output.contiguous().float()
-            
-            # Use view to reshape the tensor to the desired shape
-            output = output.view(target.shape).float()
-            outputs.append(output.cpu().detach().numpy())
-            targets.append(target.cpu().detach().numpy())
-            # gpus.append(self.gpu_id)
+            # Check if the buffer is full
+            if len(source_buffer) == self.num_bins:
+                # Convert the deque to a tensor and reshape
+                merged_tensor = torch.stack(source_buffer, dim=1)
+                output, hidden = self.model(merged_tensor, hidden, output)
+                
+                # Use view to reshape the tensor to the desired shape
+                output = output.view(target.shape).float()
+                outputs.append(output.cpu().detach().numpy())
+                targets.append(target.cpu().detach().numpy())
+                # gpus.append(self.gpu_id)
 
-            total_loss, loss_dict = self.criterions(output.float(), target.float())
-            total_loss.to(self.gpu_id)
-            # if self.gpu_id == 0:
-            for loss in loss_dict:
-                print(f"{(loss)} Train Loss: ", loss_dict[loss])
+                total_loss, loss_dict = self.criterions(output.float(), target.float())
+                total_loss.to(self.gpu_id)
+                # if self.gpu_id == 0:
+                for loss in loss_dict:
+                    print(f"{(loss)} Train Loss: ", loss_dict[loss])
 
-            self.backward(total_loss)
-            self.optimizer.step()
+                self.backward(total_loss)
+                self.optimizer.step()
+                
         # Concatenate all outputs and targets
         outputs = np.concatenate(outputs, axis=0)
         targets = np.concatenate(targets, axis=0)
@@ -136,6 +135,61 @@ class Trainer(ABC):
         }
         path = Path("cache/train/")
         self.save_numpy(log_dict, path)
+
+
+    # def _run_epoch(self, epoch, max_epochs):
+    #     self.model.train()
+    #     print(f"[Epoch {epoch} | Batchsize: {self.train_data_loader.batch_size} | Steps: {len(self.train_data_loader)}")
+    #     # self.train_data_loader.sampler.set_epoch(epoch)
+    #     outputs = []
+    #     targets = []
+    #     # gpus = []
+    #     for source, target in tqdm(self.train_data_loader):
+    #         b, seq_len, c = target.shape
+    #         timestep_outputs = []
+
+    #         source = source.to(self.gpu_id).float()
+    #         target = target.to(self.gpu_id).float()
+    #         self.optimizer.zero_grad()
+    #         data = source.clone()
+    #         for t in range(seq_len):
+
+    #             if t == 0:
+    #                 out, hidden_states = self.model(data[:, t, :, :, :].view(b, 1, *data.shape[2:]), None)
+    #             else:
+    #                 out, hidden_states = self.model(data[:, t, :, :, :].view(b, 1, *data.shape[2:]), hidden_states)
+    #             timestep_outputs.append(out)
+
+    #         # Convert timestep_outputs to a tensor
+    #         output = torch.stack(timestep_outputs).float()
+            
+    #         # Ensure the output tensor is contiguous before using view
+    #         output = output.contiguous().float()
+            
+    #         # Use view to reshape the tensor to the desired shape
+    #         output = output.view(target.shape).float()
+    #         outputs.append(output.cpu().detach().numpy())
+    #         targets.append(target.cpu().detach().numpy())
+    #         # gpus.append(self.gpu_id)
+
+    #         total_loss, loss_dict = self.criterions(output.float(), target.float())
+    #         total_loss.to(self.gpu_id)
+    #         # if self.gpu_id == 0:
+    #         for loss in loss_dict:
+    #             print(f"{(loss)} Train Loss: ", loss_dict[loss])
+
+    #         self.backward(total_loss)
+    #         self.optimizer.step()
+    #     # Concatenate all outputs and targets
+    #     outputs = np.concatenate(outputs, axis=0)
+    #     targets = np.concatenate(targets, axis=0)
+
+    #     log_dict = {
+    #         f"gpu_{self.gpu_id}_output": outputs,
+    #         f"gpu_{self.gpu_id}_target": targets,
+    #     }
+    #     path = Path("cache/train/")
+    #     self.save_numpy(log_dict, path)
 
     def evaluate(self):
         self.model.eval()

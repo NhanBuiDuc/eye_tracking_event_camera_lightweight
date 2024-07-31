@@ -18,17 +18,6 @@ from torch.utils.data import Dataset, DataLoader
 
 # from training.models.utils import get_summary
 
-class Attention(nn.Module):
-    def __init__(self, input_dim, hidden_dim):
-        super(Attention, self).__init__()
-        self.conv = nn.Conv2d(input_dim, hidden_dim, kernel_size=1)
-        
-    def forward(self, input_tensor):
-        # Apply a 1x1 convolution to match the hidden_dim
-        attention_scores = self.conv(input_tensor)
-        attention_scores = torch.sigmoid(attention_scores)  # Apply a non-linearity
-        return attention_scores
-
 class ConvLSTMCell(nn.Module):
 
     def __init__(self, input_dim, hidden_dim, kernel_size, bias):
@@ -111,7 +100,7 @@ class ConvLSTM(nn.Module):
         >> h = last_states[0][0]  # 0 for layer index, 0 for h index
     """
 
-    def __init__(self, input_dim, hidden_dim, kernel_size, num_layers,  height, width,
+    def __init__(self, input_dim, hidden_dim, kernel_size, num_layers,
                  batch_first=False, bias=True, return_all_layers=False):
         super(ConvLSTM, self).__init__()
 
@@ -141,8 +130,7 @@ class ConvLSTM(nn.Module):
                                           bias=self.bias))
 
         self.cell_list = nn.ModuleList(cell_list)
-        self.attention = Attention(input_dim, hidden_dim[-1])
-        
+
     def forward(self, input_tensor, hidden_state=None):
         """
 
@@ -164,10 +152,12 @@ class ConvLSTM(nn.Module):
         b, _, _, h, w = input_tensor.size()
 
         # Implement stateful ConvLSTM
-        if hidden_state is None:
-            hidden_state = self._init_hidden(input_tensor)
+        if hidden_state is not None:
+            pass
         else:
-            hidden_state = self._init_hidden(input_tensor, hidden_state)
+            # Since the init is done in forward. Can send image size here
+            hidden_state = self._init_hidden(batch_size=b,
+                                             image_size=(h, w))
 
         layer_output_list = []
         last_state_list = []
@@ -196,21 +186,13 @@ class ConvLSTM(nn.Module):
 
         return layer_output_list, last_state_list
 
-    def _init_hidden(self, input_tensor, hidden_state=None):
+    # init hidden states for sub cell layers
+    def _init_hidden(self, batch_size, image_size):
         init_states = []
-        attention_based_hidden = self.attention(input_tensor[:, 0])  # Use the first timestep
         for i in range(self.num_layers):
-            height, width = attention_based_hidden.size(2), attention_based_hidden.size(3)
-            if hidden_state is None:
-                init_h = torch.zeros(input_tensor.size(0), self.hidden_dim[i], height, width, device=input_tensor.device)
-                init_c = torch.zeros(input_tensor.size(0), self.hidden_dim[i], height, width, device=input_tensor.device)
-            else:
-                h, c = hidden_state[i]
-                init_h = h * attention_based_hidden
-                init_c = c  # You can modify this if you want to apply attention to c as well
-            init_states.append((init_h, init_c))
+            init_states.append(self.cell_list[i].init_hidden(batch_size, image_size))
         return init_states
-        
+
     @staticmethod
     def _check_kernel_size_consistency(kernel_size):
         if not (isinstance(kernel_size, tuple) or
@@ -227,19 +209,32 @@ class SimpleConvLSTM2(nn.Module):
     def __init__(self, height, width, input_dim):
         super(SimpleConvLSTM2, self).__init__() 
 
-        self.convlstm1 = ConvLSTM(input_dim=input_dim, hidden_dim=8, kernel_size=(3, 3), height=height, width=height, num_layers=1, batch_first=True)
-        self.bn1 = nn.BatchNorm3d(8)
+        self.convlstm1 = ConvLSTM(input_dim=input_dim, hidden_dim=16, kernel_size=(3, 3), num_layers=1, batch_first=True)
+        self.bn1 = nn.BatchNorm3d(16)
         self.pool1 = nn.MaxPool3d(kernel_size=(1, 2, 2))
 
-        self.convlstm2 = ConvLSTM(input_dim=8, hidden_dim=16, kernel_size=(3, 3), height=height, width=height, num_layers=1, batch_first=True)
-        self.bn2 = nn.BatchNorm3d(16)
+        self.convlstm2 = ConvLSTM(input_dim=16, hidden_dim=32, kernel_size=(3, 3), num_layers=1, batch_first=True)
+        self.bn2 = nn.BatchNorm3d(32)
         self.pool2 = nn.MaxPool3d(kernel_size=(1, 2, 2))
 
-        self.convlstm3 = ConvLSTM(input_dim=16, hidden_dim=32, kernel_size=(3, 3), height=height, width=height, num_layers=1, batch_first=True)
-        self.bn3 = nn.BatchNorm3d(32)
+        self.convlstm3 = ConvLSTM(input_dim=32, hidden_dim=64, kernel_size=(3, 3), num_layers=1, batch_first=True)
+        self.bn3 = nn.BatchNorm3d(64)
         self.pool3 = nn.MaxPool3d(kernel_size=(1, 2, 2))
 
-        self.fc1 = nn.Linear(2048, 156)
+        self.convlstm4 = ConvLSTM(input_dim=64, hidden_dim=128, kernel_size=(3, 3), num_layers=1, batch_first=True)
+        self.bn4 = nn.BatchNorm3d(128)
+        self.pool4 = nn.MaxPool3d(kernel_size=(1, 2, 2))
+
+
+        self.convlstm5 = ConvLSTM(input_dim=128, hidden_dim=256, kernel_size=(3, 3), num_layers=1, batch_first=True)
+        self.bn5 = nn.BatchNorm3d(256)
+        self.pool5 = nn.MaxPool3d(kernel_size=(1, 2, 2))
+
+        self.convlstm6 = ConvLSTM(input_dim=256, hidden_dim=512, kernel_size=(3, 3), num_layers=1, batch_first=True)
+        self.bn6 = nn.BatchNorm3d(512)
+        self.pool6 = nn.MaxPool3d(kernel_size=(1, 2, 2))
+
+        self.fc1 = nn.Linear(512, 156)
         self.drop = nn.Dropout(0.5)
         self.fc2 = nn.Linear(156, 2)
         # get_summary(self)
@@ -281,6 +276,43 @@ class SimpleConvLSTM2(nn.Module):
         x = F.relu(x)
         x = self.pool3(x)
         hidden_states.append(h3)
+
+        if hidden_states_input is None or hidden_states_input[3] is None:
+            h4 = None
+        else:
+            h4 = hidden_states_input[3]
+        x = x.permute(0, 2, 1, 3, 4)
+        x, h4 = self.convlstm4(x, h4)
+        x = x[0].permute(0, 2, 1, 3, 4)
+        x = self.bn4(x)
+        x = F.relu(x)
+        x = self.pool4(x)
+        hidden_states.append(h4)
+
+        if hidden_states_input is None or hidden_states_input[4] is None:
+            h5 = None
+        else:
+            h5 = hidden_states_input[4]
+        x = x.permute(0, 2, 1, 3, 4)
+        x, h5 = self.convlstm5(x, h5)
+        x = x[0].permute(0, 2, 1, 3, 4)
+        x = self.bn5(x)
+        x = F.relu(x)
+        x = self.pool5(x)
+        hidden_states.append(h5)
+
+
+        if hidden_states_input is None or hidden_states_input[5] is None:
+            h6 = None
+        else:
+            h6 = hidden_states_input[5]
+        x = x.permute(0, 2, 1, 3, 4)
+        x, h6 = self.convlstm6(x, h6)
+        x = x[0].permute(0, 2, 1, 3, 4)
+        x = self.bn6(x)
+        x = F.relu(x)
+        x = self.pool6(x)
+        hidden_states.append(h6)
 
         # Flatten and apply LSTM layer
         b, c, seq, h, w = x.size()

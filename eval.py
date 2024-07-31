@@ -19,6 +19,8 @@ import torch.nn as nn
 from loss.loss_base import Loss, LossSequence
 from loss.YoloLoss import YoloLoss
 from model.simple_convlstm import SimpleConvLSTM
+from model.simple_convlstm1 import SimpleConvLSTM1
+from model.simple_convlstm2 import SimpleConvLSTM2
 import multiprocessing
 import re
 from metrics.AngularError import AngularError
@@ -154,7 +156,7 @@ def main(train_dataset, val_dataset, test_dataset, dataset_params, training_para
     # thread.start()
     config_path = "config/evb_eye_fast.json"
 
-    arch_name = "LSTM"
+    arch_name = training_params["arch_name"]
     optimizer =  training_params["optimizer"]
     lr_model = training_params["lr_model"]
     batch_size = training_params["batch_size"]
@@ -180,6 +182,18 @@ def main(train_dataset, val_dataset, test_dataset, dataset_params, training_para
         model = Retina(dataset_params, training_params, config)
     elif arch_name == "LSTM": 
         model = SimpleConvLSTM(
+            height=dataset_params["img_height"],
+            width=dataset_params["img_width"],
+            input_dim=dataset_params["input_channel"]
+        )
+    elif arch_name == "LSTM1": 
+        model = SimpleConvLSTM1(
+            height=dataset_params["img_height"],
+            width=dataset_params["img_width"],
+            input_dim=dataset_params["input_channel"]
+        )
+    elif arch_name == "LSTM2": 
+        model = SimpleConvLSTM2(
             height=dataset_params["img_height"],
             width=dataset_params["img_width"],
             input_dim=dataset_params["input_channel"]
@@ -225,7 +239,7 @@ def main(train_dataset, val_dataset, test_dataset, dataset_params, training_para
     trainer = Trainer(model, device, dataloader_list, optimizer, scheduler, criterions_sequence, metrics_sequence, save_every, snapshot_path)
     # trainer.train(num_epochs)
     # thread.join()
-    # trainer.evaluate()
+    trainer.evaluate()
     folder_path = 'cache/eval'
     output_arrays, target_arrays = read_output_target(folder_path)
     outputs = np.concatenate(output_arrays, axis=0)
@@ -242,16 +256,17 @@ if __name__ == "__main__":
     torch.autograd.set_detect_anomaly(True)
     torch.multiprocessing.set_start_method("spawn", force=True)
     torch.set_default_dtype(torch.float32)
-    torch.set_default_device("cuda:2")
+
     torch.set_num_threads(10)
     torch.set_num_interop_threads(10)
 
-    config_path = "config/evb_eye.json"
+    config_path = "config/evb_eye1.json"
     if config_path is not None:
         with open(config_path, 'r') as f:
             config_params = json.load(f)
     dataset_params = config_params["dataset_params"]
     training_params = config_params["training_params"]
+    torch.set_default_device(training_params["device"])
     short_train = False
     train_dataset = DatasetHz10000(split="train", config_params=config_params)  # Example dataset
     val_dataset = DatasetHz10000(split="val", config_params=config_params)  # Example dataset

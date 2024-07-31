@@ -153,24 +153,26 @@ def process_and_save_user_data(args):
 
     return idx
 
-def find_closest_index(df, target, start_time, end_time = None, return_last = False):
+def find_closest_index(df, target, start_time=None, end_time=None, return_last=False):
     # Create a copy of the DataFrame
     df = df.copy()
     
-    # Extract x and y from the target list
+    # Extract target row and col
     target_x, target_y = target
     
     # Ensure columns are numeric if necessary
     df['row'] = pd.to_numeric(df['row'], errors='coerce')
     df['col'] = pd.to_numeric(df['col'], errors='coerce')
     
-    # Filter to include only rows with a timestamp larger than the given timestep
-    df_filtered = df[df['timestamp'] > start_time]
-    if end_time != None:
-        df_filtered = df[df['timestamp'] < end_time]        
-    # Ensure that we have rows after timestamp filtering
-    if df_filtered.empty:
-        return None
+    # Filter the DataFrame based on the given timestamps
+    if start_time is not None and end_time is not None:
+        df_filtered = df[(df['timestamp'] > start_time) & (df['timestamp'] < end_time)]
+    elif start_time is not None:
+        df_filtered = df[df['timestamp'] > start_time]
+    elif end_time is not None:
+        df_filtered = df[df['timestamp'] < end_time]
+    else:
+        df_filtered = df
     
     # Find rows where either the row or col column differs from target_x or target_y
     df_filtered = df_filtered[
@@ -180,8 +182,9 @@ def find_closest_index(df, target, start_time, end_time = None, return_last = Fa
     # If no rows meet the criteria, return None
     if df_filtered.empty:
         return None
-    if return_last == True:
-        # Return the index of the first row that meets the criteria
+
+    # Return the index of the first or last row that meets the criteria
+    if return_last:
         return df_filtered.index[-1]
     return df_filtered.index[0]
 
@@ -280,7 +283,7 @@ class DatasetHz10000:
         self.merged_data = []
         self.merged_labels = []
         self.avg_dt = 0
-
+    
     def prepare_unstructured_data(self, data_idx=None):
         if data_idx is None:
             data_idx = self.data_idx
@@ -303,15 +306,30 @@ class DatasetHz10000:
         pool.close()
         pool.join()
 
-    # def prepare_unstructured_data(self, data_idx=None):
-    #     if data_idx is None:
-    #         data_idx = self.data_idx
-    #     pool = mp.Pool(mp.cpu_count())
-    #     args = [(idx, self) for idx in data_idx]
-    #     for idx in pool.imap_unordered(process_and_save_user_data, args):
-    #         print(f"Finished processing and saving data for user {idx}")
-    #     pool.close()
-    #     pool.join()
+
+    def prepare_unstructured_data(self, data_idx=None):
+        if data_idx is None:
+            data_idx = self.data_idx
+
+        for idx in data_idx:
+            print(f"Preparing index for user {idx}")
+            self.all_data[idx] = {}
+
+            left_frame_stack, left_event_stack, left_labels = self.collect_data(idx, 0)
+            right_frame_stack, right_event_stack, right_labels = self.collect_data(idx, 1)
+
+            left_pols, left_xs, left_ys, left_ts = extract_event_components(left_event_stack)
+            right_pols, right_xs, right_ys, right_ts = extract_event_components(right_event_stack)
+
+            left_eye_data = make_structured_array(left_ts, left_xs, left_ys, left_pols, dtype=events_struct)
+            right_eye_data = make_structured_array(right_ts, right_xs, right_ys, right_pols, dtype=events_struct)
+
+            left_eye_data = self.input_transform(left_eye_data)
+            right_eye_data = self.input_transform(right_eye_data)
+
+            batch_left_data, batch_left_label = self.window_size_event_label_sync(left_eye_data, left_labels)
+            batch_right_data, batch_right_label = self.window_size_event_label_sync(left_eye_data, left_labels)
+
 
     def find_index_list(self, label):
 
@@ -613,7 +631,84 @@ class DatasetHz10000:
             start_idx += t.shape[0]
 
         return np.array(data_temp).astype(np.float32), np.array(np.column_stack((x_axis, y_axis))).astype(np.float32)
-        
+
+    def window_size_event_label_sync(self, data, labels, eye, txt_file_name, lock):
+        data = {
+            "xy": np.hstack(
+                [data["x"].reshape(-1, 1), data["y"].reshape(-1, 1)]
+            ),
+            "p": data["p"] * 1,
+            "t": data["t"],
+        }
+        # label start and last
+        tab_start, tab_last = labels.iloc[0], labels.iloc[-1]
+        # start_label = (int(tab_start.row.item()), int(tab_start.col.item()))
+        # end_label = (int(tab_last.row.item()), int(tab_last.col.item()))
+        idx = find_closest_index(labels, [0, 0], return_last=False)
+        start_time = labels["timestamp"].iloc[idx]   
+        end_time = start_time + self.fixed_window_dt
+
+        # append multiple data slices
+        batch_data = []
+        batch_label = []
+
+        while(end_time < tab_last["timestamp"]):
+
+            idx = np.searchsorted(labels["timestamp"], end_time, side="left")
+            row = labels.iloc[idx]["row"]
+            col = labels.iloc[idx]["col"]
+
+            stimulus = labels.iloc[idx]["stimulus"]
+            if stimulus == "st" or stimulus == "pa":
+                continue
+            if old_row != row and old_col != col:
+                if stimulus == "s":
+                    state_label = int(1)
+                if stimulus == "p":
+                    state_label = int(2)
+            else:
+                state_label = int(0)
+            old_row = row
+            old_col = col
+            # frame
+            data_temp = np.zeros(
+                (self.input_channel, self.img_width, self.img_height)
+            ).astype(np.int8)
+            evs_t = data["t"][(data["t"] >= start_time) & (data["t"] <= end_time)]
+            evs_p, evs_xy = data["p"][-evs_t.shape[0] :], data["xy"][-evs_t.shape[0] :, :]
+
+            np.add.at(data_temp[0], (evs_xy[evs_p == 0, 0], evs_xy[evs_p == 0, 1]), 1)
+            if self.input_channel > 1:
+                np.add.at(
+                    data_temp[self.input_channel - 1], (evs_xy[evs_p == 1, 0], evs_xy[evs_p == 1, 1]), 1
+                )
+                data_temp[0, :, :][
+                    data_temp[1, :, :] >= data_temp[0, :, :]
+                ] = 0  # if ch 1 has more evs than 0
+                data_temp[1, :, :][
+                    data_temp[1, :, :] < data_temp[0, :, :]
+                ] = 0  # if ch 0 has more evs than 1
+
+            data_temp = data_temp.clip(0, 1)  # no double events
+ 
+            batch_label = np.column_stack((row, col, state_label)).astype(np.int8)
+
+            data_filename = f'{self.cache_data_dir}/{idx}_{eye}_{idx}_data.h5'
+            label_filename = f'{self.cache_data_dir}/{idx}_{eye}_{idx}_label.h5'
+
+            with h5py.File(data_filename, 'w') as hf:
+                hf.create_dataset('data', data=data_temp, compression='gzip')
+
+            with h5py.File(label_filename, 'w') as hf:
+                hf.create_dataset('labels', data=batch_label, compression='gzip')
+
+            with lock:
+                with open(txt_file, 'a') as f:
+                    f.write(f'{txt_file_name}\n')
+
+            start_time = end_time
+            end_time = start_time + self.fixed_window_dt
+
     def load_static_window(self, data, labels):
         data = {
             "xy": np.hstack(

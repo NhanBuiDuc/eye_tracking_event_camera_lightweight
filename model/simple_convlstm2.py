@@ -100,7 +100,7 @@ class ConvLSTM(nn.Module):
         >> h = last_states[0][0]  # 0 for layer index, 0 for h index
     """
 
-    def __init__(self, input_dim, hidden_dim, kernel_size, num_layers,
+    def __init__(self, input_dim, hidden_dim, height, width, kernel_size, num_layers,
                  batch_first=False, bias=True, return_all_layers=False):
         super(ConvLSTM, self).__init__()
 
@@ -114,6 +114,8 @@ class ConvLSTM(nn.Module):
 
         self.input_dim = input_dim
         self.hidden_dim = hidden_dim
+        self.height = height
+        self.width = width
         self.kernel_size = kernel_size
         self.num_layers = num_layers
         self.batch_first = batch_first
@@ -131,7 +133,12 @@ class ConvLSTM(nn.Module):
 
         self.cell_list = nn.ModuleList(cell_list)
 
-    def forward(self, input_tensor, hidden_state=None):
+        # Define a linear layer to transform tensor_2
+        self.hidden_linear = nn.Linear(3, hidden_dim[0] * height * width)  # Transform 3 features to 4096 (64*6
+        # Define a convolutional layer to reduce back to 8 channels
+        self.hidden_conv = nn.Conv2d(in_channels=hidden_dim[0] * 2, out_channels=hidden_dim[0], kernel_size=1, stride=1, padding=0)
+
+    def forward(self, input_tensor, hidden_state=None, last_out = None):
         """
 
         Parameters
@@ -149,15 +156,27 @@ class ConvLSTM(nn.Module):
             # (t, b, c, h, w) -> (b, t, c, h, w)
             input_tensor = input_tensor.permute(1, 0, 2, 3, 4)
             
-        b, _, _, h, w = input_tensor.size()
+        b, t, c, h, w = input_tensor.size()
 
         # Implement stateful ConvLSTM
-        if hidden_state is not None:
-            pass
-        else:
+        if hidden_state is None:
             # Since the init is done in forward. Can send image size here
             hidden_state = self._init_hidden(batch_size=b,
                                              image_size=(h, w))
+            # Apply the linear layer to tensor_2
+        if last_out is not None:
+            hidden_state_list = []
+            for layer_idx in range(self.num_layers):
+                h, c = hidden_state[layer_idx]
+                out_feat = self.hidden_linear(last_out)  # Shape: (1, 4096)
+                out_feat = out_feat.view(h.shape[0], h.shape[1], h.shape[2], h.shape[3])
+                concatenated_h_feat = torch.cat((h, out_feat), dim=1)  # Shape: (1, 16, 64, 64)
+                concatenated_c_feat = torch.cat((c, out_feat), dim=1)  # Shape: (1, 16, 64, 64)
+                h = self.hidden_conv(concatenated_h_feat)
+                c = self.hidden_conv(concatenated_c_feat)
+                hidden_state_list.append((h, c))
+
+            hidden_state = hidden_state_list
 
         layer_output_list = []
         last_state_list = []
@@ -205,27 +224,27 @@ class ConvLSTM(nn.Module):
             param = [param] * num_layers
         return param
         
-class SimpleConvLSTM1(nn.Module):
+class SimpleConvLSTM2(nn.Module):
     def __init__(self, height, width, input_dim):
-        super(SimpleConvLSTM1, self).__init__() 
+        super(SimpleConvLSTM2, self).__init__() 
 
-        self.convlstm1 = ConvLSTM(input_dim=input_dim, hidden_dim=8, kernel_size=(3, 3), num_layers=1, batch_first=True)
+        self.convlstm1 = ConvLSTM(input_dim=input_dim, hidden_dim=8, height = height, width = width, kernel_size=(3, 3), num_layers=1, batch_first=True)
         self.bn1 = nn.BatchNorm3d(8)
         self.pool1 = nn.MaxPool3d(kernel_size=(1, 2, 2))
 
-        self.convlstm2 = ConvLSTM(input_dim=8, hidden_dim=16, kernel_size=(3, 3), num_layers=1, batch_first=True)
+        self.convlstm2 = ConvLSTM(input_dim=8, hidden_dim=16, height = height//2, width = width//2, kernel_size=(3, 3), num_layers=1, batch_first=True)
         self.bn2 = nn.BatchNorm3d(16)
         self.pool2 = nn.MaxPool3d(kernel_size=(1, 2, 2))
 
-        self.convlstm3 = ConvLSTM(input_dim=16, hidden_dim=32, kernel_size=(3, 3), num_layers=1, batch_first=True)
+        self.convlstm3 = ConvLSTM(input_dim=16, hidden_dim=32, height = height//4, width = width/4, kernel_size=(3, 3), num_layers=1, batch_first=True)
         self.bn3 = nn.BatchNorm3d(32)
         self.pool3 = nn.MaxPool3d(kernel_size=(1, 2, 2))
 
-        self.convlstm4 = ConvLSTM(input_dim=32, hidden_dim=64, kernel_size=(3, 3), num_layers=1, batch_first=True)
+        self.convlstm4 = ConvLSTM(input_dim=32, hidden_dim=64, height = height//8, width = width//8, kernel_size=(3, 3), num_layers=1, batch_first=True)
         self.bn4 = nn.BatchNorm3d(64)
         self.pool4 = nn.MaxPool3d(kernel_size=(1, 2, 2))
         self.fc1 = nn.Linear(1024, 512)
-        self.drop = nn.Dropout(0.5)
+        # self.drop = nn.Dropout(0.5)
         self.fc2 = nn.Linear(512, 3)
         # get_summary(self)
 
@@ -237,7 +256,7 @@ class SimpleConvLSTM1(nn.Module):
         else:
             h1 = hidden_states_input[0]
 
-        x, h1 = self.convlstm1(x, h1)
+        x, h1 = self.convlstm1(x, h1, last_out )
         x = x[0].permute(0, 2, 1, 3, 4)
         x = self.bn1(x)
         x = F.relu(x)
@@ -249,7 +268,7 @@ class SimpleConvLSTM1(nn.Module):
         else:
             h2 = hidden_states_input[1]
         x = x.permute(0, 2, 1, 3, 4)
-        x, h2 = self.convlstm2(x, h2)
+        x, h2 = self.convlstm2(x, h2, last_out)
         x = x[0].permute(0, 2, 1, 3, 4)
         x = self.bn2(x)
         x = F.relu(x)
@@ -261,7 +280,7 @@ class SimpleConvLSTM1(nn.Module):
         else:
             h3 = hidden_states_input[2]
         x = x.permute(0, 2, 1, 3, 4)
-        x, h3 = self.convlstm3(x, h3)
+        x, h3 = self.convlstm3(x, h3, last_out)
         x = x[0].permute(0, 2, 1, 3, 4)
         x = self.bn3(x)
         x = F.relu(x)
@@ -273,7 +292,7 @@ class SimpleConvLSTM1(nn.Module):
         else:
             h4 = hidden_states_input[3]
         x = x.permute(0, 2, 1, 3, 4)
-        x, h4 = self.convlstm4(x, h4)
+        x, h4 = self.convlstm4(x, h4, last_out)
         x = x[0].permute(0, 2, 1, 3, 4)
         x = self.bn4(x)
         x = F.relu(x)
@@ -287,12 +306,10 @@ class SimpleConvLSTM1(nn.Module):
             data = x[:,:,t,:,:]
             data = data.reshape(b, -1)
             data = F.relu(self.fc1(data))
-            data = self.drop(data)
+            # data = self.drop(data)
             data = self.fc2(data)
-            x_list.append(data)
-        y = torch.stack(x_list, dim =0)
-        y = y.permute(1, 0, 2)
-        return y
+
+        return data, hidden_states
 
 # if __name__ == "__main__":
 #     import torch

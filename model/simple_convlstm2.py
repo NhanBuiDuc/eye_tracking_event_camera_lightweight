@@ -205,41 +205,32 @@ class ConvLSTM(nn.Module):
             param = [param] * num_layers
         return param
         
-class SimpleConvLSTM2(nn.Module):
+class SimpleConvLSTM1(nn.Module):
     def __init__(self, height, width, input_dim):
-        super(SimpleConvLSTM2, self).__init__() 
+        super(SimpleConvLSTM1, self).__init__() 
 
-        self.convlstm1 = ConvLSTM(input_dim=input_dim, hidden_dim=16, kernel_size=(3, 3), num_layers=1, batch_first=True)
-        self.bn1 = nn.BatchNorm3d(16)
+        self.convlstm1 = ConvLSTM(input_dim=input_dim, hidden_dim=8, kernel_size=(3, 3), num_layers=1, batch_first=True)
+        self.bn1 = nn.BatchNorm3d(8)
         self.pool1 = nn.MaxPool3d(kernel_size=(1, 2, 2))
 
-        self.convlstm2 = ConvLSTM(input_dim=16, hidden_dim=32, kernel_size=(3, 3), num_layers=1, batch_first=True)
-        self.bn2 = nn.BatchNorm3d(32)
+        self.convlstm2 = ConvLSTM(input_dim=8, hidden_dim=16, kernel_size=(3, 3), num_layers=1, batch_first=True)
+        self.bn2 = nn.BatchNorm3d(16)
         self.pool2 = nn.MaxPool3d(kernel_size=(1, 2, 2))
 
-        self.convlstm3 = ConvLSTM(input_dim=32, hidden_dim=64, kernel_size=(3, 3), num_layers=1, batch_first=True)
-        self.bn3 = nn.BatchNorm3d(64)
+        self.convlstm3 = ConvLSTM(input_dim=16, hidden_dim=32, kernel_size=(3, 3), num_layers=1, batch_first=True)
+        self.bn3 = nn.BatchNorm3d(32)
         self.pool3 = nn.MaxPool3d(kernel_size=(1, 2, 2))
 
-        self.convlstm4 = ConvLSTM(input_dim=64, hidden_dim=128, kernel_size=(3, 3), num_layers=1, batch_first=True)
-        self.bn4 = nn.BatchNorm3d(128)
+        self.convlstm4 = ConvLSTM(input_dim=32, hidden_dim=64, kernel_size=(3, 3), num_layers=1, batch_first=True)
+        self.bn4 = nn.BatchNorm3d(64)
         self.pool4 = nn.MaxPool3d(kernel_size=(1, 2, 2))
-
-
-        self.convlstm5 = ConvLSTM(input_dim=128, hidden_dim=256, kernel_size=(3, 3), num_layers=1, batch_first=True)
-        self.bn5 = nn.BatchNorm3d(256)
-        self.pool5 = nn.MaxPool3d(kernel_size=(1, 2, 2))
-
-        self.convlstm6 = ConvLSTM(input_dim=256, hidden_dim=512, kernel_size=(3, 3), num_layers=1, batch_first=True)
-        self.bn6 = nn.BatchNorm3d(512)
-        self.pool6 = nn.MaxPool3d(kernel_size=(1, 2, 2))
-
         self.fc1 = nn.Linear(1024, 512)
         self.drop = nn.Dropout(0.5)
         self.fc2 = nn.Linear(512, 3)
         # get_summary(self)
 
-    def forward(self, x, hidden_states_input=None, last_out=None):
+    def forward(self, x, hidden_states_input=None, last_out = None):
+
         hidden_states = []
         if hidden_states_input is None or hidden_states_input[0] is None:
             h1 = None
@@ -289,38 +280,19 @@ class SimpleConvLSTM2(nn.Module):
         x = self.pool4(x)
         hidden_states.append(h4)
 
-        if hidden_states_input is None or hidden_states_input[4] is None:
-            h5 = None
-        else:
-            h5 = hidden_states_input[4]
-        x = x.permute(0, 2, 1, 3, 4)
-        x, h5 = self.convlstm5(x, h5)
-        x = x[0].permute(0, 2, 1, 3, 4)
-        x = self.bn5(x)
-        x = F.relu(x)
-        x = self.pool5(x)
-        hidden_states.append(h5)
-
-
-        if hidden_states_input is None or hidden_states_input[5] is None:
-            h6 = None
-        else:
-            h6 = hidden_states_input[5]
-        x = x.permute(0, 2, 1, 3, 4)
-        x, h6 = self.convlstm6(x, h6)
-        x = x[0].permute(0, 2, 1, 3, 4)
-        x = self.bn6(x)
-        x = F.relu(x)
-        x = self.pool6(x)
-        hidden_states.append(h6)
-
         # Flatten and apply LSTM layer
+        x_list=[]
         b, c, seq, h, w = x.size()
-        data = x.reshape(b, seq, -1)
-        data = F.relu(self.fc1(data))
-        data = self.drop(data)
-        data = self.fc2(data)
-        return data, hidden_states
+        for t in range(seq): 
+            data = x[:,:,t,:,:]
+            data = data.reshape(b, -1)
+            data = F.relu(self.fc1(data))
+            data = self.drop(data)
+            data = self.fc2(data)
+            x_list.append(data)
+        y = torch.stack(x_list, dim =0)
+        y = y.permute(1, 0, 2)
+        return y
 
 # if __name__ == "__main__":
 #     import torch

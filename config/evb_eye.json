@@ -14,7 +14,7 @@
         "focal_length": 25,
         "img_width": 64,
         "img_height": 64,
-        "fixed_window_dt": 40000, 
+        "fixed_window_dt": 20000, 
         "tonic_transforms": [],
         "use_cache": true,
         "split_ratio": 0.7,
@@ -22,7 +22,7 @@
     },
     "training_params": {
         "arch_name": "LSTM",
-        "device": "cuda:4",
+        "device": "cuda:2",
         "metrics": ["angular_error"],
         "losses": ["mean_squared_error"],
         "lr_model": 1e-6,

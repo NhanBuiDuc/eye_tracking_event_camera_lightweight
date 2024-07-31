@@ -234,12 +234,12 @@ class SimpleConvLSTM2(nn.Module):
         self.bn6 = nn.BatchNorm3d(512)
         self.pool6 = nn.MaxPool3d(kernel_size=(1, 2, 2))
 
-        self.fc1 = nn.Linear(512, 156)
+        self.fc1 = nn.Linear(1024, 512)
         self.drop = nn.Dropout(0.5)
-        self.fc2 = nn.Linear(156, 2)
+        self.fc2 = nn.Linear(512, 3)
         # get_summary(self)
 
-    def forward(self, x, hidden_states_input):
+    def forward(self, x, hidden_states_input=None, last_out=None):
         hidden_states = []
         if hidden_states_input is None or hidden_states_input[0] is None:
             h1 = None

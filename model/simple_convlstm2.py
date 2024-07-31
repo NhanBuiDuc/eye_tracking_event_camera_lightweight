@@ -236,7 +236,7 @@ class SimpleConvLSTM2(nn.Module):
         self.bn2 = nn.BatchNorm3d(16)
         self.pool2 = nn.MaxPool3d(kernel_size=(1, 2, 2))
 
-        self.convlstm3 = ConvLSTM(input_dim=16, hidden_dim=32, height = height//4, width = width/4, kernel_size=(3, 3), num_layers=1, batch_first=True)
+        self.convlstm3 = ConvLSTM(input_dim=16, hidden_dim=32, height = height//4, width = width//4, kernel_size=(3, 3), num_layers=1, batch_first=True)
         self.bn3 = nn.BatchNorm3d(32)
         self.pool3 = nn.MaxPool3d(kernel_size=(1, 2, 2))
 
@@ -256,7 +256,7 @@ class SimpleConvLSTM2(nn.Module):
         else:
             h1 = hidden_states_input[0]
 
-        x, h1 = self.convlstm1(x, h1, last_out )
+        x, h1 = self.convlstm1(x, h1, last_out)
         x = x[0].permute(0, 2, 1, 3, 4)
         x = self.bn1(x)
         x = F.relu(x)

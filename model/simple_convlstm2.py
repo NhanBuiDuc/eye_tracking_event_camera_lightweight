@@ -136,8 +136,8 @@ class ConvLSTM(nn.Module):
         # Define a linear layer to transform tensor_2
         self.hidden_linear = nn.Linear(3, hidden_dim[0] * height * width)  # Transform 3 features to 4096 (64*6
         # Define a convolutional layer to reduce back to 8 channels
-        self.hidden_conv = nn.Conv2d(in_channels=hidden_dim[0] * 2, out_channels=hidden_dim[0], kernel_size=1, stride=1, padding=0)
-
+        self.hidden_conv_h = nn.Conv2d(in_channels=hidden_dim[0] * 2, out_channels=hidden_dim[0], kernel_size=1, stride=1, padding=0)
+        self.hidden_conv_c = nn.Conv2d(in_channels=hidden_dim[0] * 2, out_channels=hidden_dim[0], kernel_size=1, stride=1, padding=0)
     def forward(self, input_tensor, hidden_state=None, last_out = None):
         """
 
@@ -172,8 +172,8 @@ class ConvLSTM(nn.Module):
                 out_feat = out_feat.view(h.shape[0], h.shape[1], h.shape[2], h.shape[3])
                 concatenated_h_feat = torch.cat((h, out_feat), dim=1)  # Shape: (1, 16, 64, 64)
                 concatenated_c_feat = torch.cat((c, out_feat), dim=1)  # Shape: (1, 16, 64, 64)
-                h = self.hidden_conv(concatenated_h_feat)
-                c = self.hidden_conv(concatenated_c_feat)
+                h = self.hidden_conv_h(concatenated_h_feat)
+                c = self.hidden_conv_c(concatenated_c_feat)
                 hidden_state_list.append((h, c))
 
             hidden_state = hidden_state_list
@@ -256,7 +256,10 @@ class SimpleConvLSTM2(nn.Module):
         else:
             h1 = hidden_states_input[0]
 
-        x, h1 = self.convlstm1(x, h1, last_out)
+        if last_out is None:
+            x, h1 = self.convlstm1(x, h1, None)
+        else:
+            x, h1 = self.convlstm1(x, h1, last_out.clone())
         x = x[0].permute(0, 2, 1, 3, 4)
         x = self.bn1(x)
         x = F.relu(x)
@@ -268,7 +271,12 @@ class SimpleConvLSTM2(nn.Module):
         else:
             h2 = hidden_states_input[1]
         x = x.permute(0, 2, 1, 3, 4)
-        x, h2 = self.convlstm2(x, h2, last_out)
+
+        if last_out is None:
+            x, h2 = self.convlstm2(x, h2, None)
+        else:
+            x, h2 = self.convlstm2(x, h2, last_out.clone())
+
         x = x[0].permute(0, 2, 1, 3, 4)
         x = self.bn2(x)
         x = F.relu(x)
@@ -279,8 +287,14 @@ class SimpleConvLSTM2(nn.Module):
             h3 = None
         else:
             h3 = hidden_states_input[2]
+
         x = x.permute(0, 2, 1, 3, 4)
-        x, h3 = self.convlstm3(x, h3, last_out)
+
+        if last_out is None:
+            x, h3 = self.convlstm3(x, h3, None)
+        else:
+            x, h3 = self.convlstm3(x, h3, last_out.clone())
+
         x = x[0].permute(0, 2, 1, 3, 4)
         x = self.bn3(x)
         x = F.relu(x)
@@ -291,8 +305,14 @@ class SimpleConvLSTM2(nn.Module):
             h4 = None
         else:
             h4 = hidden_states_input[3]
+
         x = x.permute(0, 2, 1, 3, 4)
-        x, h4 = self.convlstm4(x, h4, last_out)
+
+        if last_out is None:
+            x, h4 = self.convlstm4(x, h4, None)
+        else:
+            x, h4 = self.convlstm4(x, h4, last_out.clone())
+
         x = x[0].permute(0, 2, 1, 3, 4)
         x = self.bn4(x)
         x = F.relu(x)

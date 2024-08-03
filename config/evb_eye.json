@@ -6,6 +6,7 @@
         "train_set_range": [1, 28],
         "data_dir": "data/dataset/eye_data",
         "cache_data_dir": "cache/stream_data",
+        "annotation_dir": "cache/annotation",
         "num_bins": 30,
         "input_channel": 2,
         "davis_sensor_size": [260, 346],

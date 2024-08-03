@@ -154,6 +154,16 @@ def find_closest_index(df, target, start_time=None, end_time=None, return_last=F
         return df_filtered.index[-1]
     return df_filtered.index[0]
 
+def find_index_with_different_stimulus(df, start_index, stimulus):
+    # Ensure start_index is within the range of the DataFrame
+    if start_index < 0 or start_index >= len(df):
+        raise IndexError("start_index is out of the DataFrame's range.")
+    
+    # Iterate from the start_index to the end of the DataFrame
+    for i in range(start_index + 1, len(df)):
+        if df.loc[i, 'stimulus_type'] != stimulus:
+            return i
+
 events_struct = np.dtype([
     ('t', np.uint32),
     ('x', np.uint16),
@@ -250,50 +260,65 @@ class DatasetHz10000:
         self.merged_labels = []
         self.avg_dt = 0
     
-    def prepare_unstructured_data(self, data_idx=None):
-        if data_idx is None:
-            data_idx = self.data_idx
-
-        manager = mp.Manager()
-        lock = manager.Lock()
-
-        txt_file = f'{self.cache_data_dir}/{self.split}.txt'
-
-        # Remove the text file if it already exists
-        if os.path.exists(txt_file):
-            os.remove(txt_file)
-
-        pool = mp.Pool(mp.cpu_count())
-        args = [(idx, self, lock, txt_file) for idx in data_idx]
-
-        pool.map(process_and_save_user_data, args)
-
-        pool.close()
-        pool.join()
-
-
     # def prepare_unstructured_data(self, data_idx=None):
     #     if data_idx is None:
     #         data_idx = self.data_idx
 
-    #     for idx in data_idx:
-    #         print(f"Preparing index for user {idx}")
-    #         self.all_data[idx] = {}
+    #     manager = mp.Manager()
+    #     lock = manager.Lock()
 
-    #         left_frame_stack, left_event_stack, left_labels = self.collect_data(idx, 0)
-    #         right_frame_stack, right_event_stack, right_labels = self.collect_data(idx, 1)
+    #     txt_file = f'{self.cache_data_dir}/{self.split}.txt'
 
-    #         left_pols, left_xs, left_ys, left_ts = extract_event_components(left_event_stack)
-    #         right_pols, right_xs, right_ys, right_ts = extract_event_components(right_event_stack)
+    #     # Remove the text file if it already exists
+    #     if os.path.exists(txt_file):
+    #         os.remove(txt_file)
 
-    #         left_eye_data = make_structured_array(left_ts, left_xs, left_ys, left_pols, dtype=events_struct)
-    #         right_eye_data = make_structured_array(right_ts, right_xs, right_ys, right_pols, dtype=events_struct)
+    #     pool = mp.Pool(mp.cpu_count())
+    #     args = [(idx, self, lock, txt_file) for idx in data_idx]
 
-    #         left_eye_data = self.input_transform(left_eye_data)
-    #         right_eye_data = self.input_transform(right_eye_data)
+    #     pool.map(process_and_save_user_data, args)
 
-    #         self.window_size_event_label_sync(left_eye_data, left_labels)
-    #         self.window_size_event_label_sync(left_eye_data, left_labels)
+    #     pool.close()
+    #     pool.join()
+
+
+    def prepare_unstructured_data(self, reset = False, data_idx=None):
+        if data_idx is None:
+            data_idx = self.data_idx
+
+        for idx in data_idx:
+            folder = f"{self.annotation_dir}/user_{idx}"
+            # Create the folder if it does not exist
+            os.makedirs(folder, exist_ok=True)
+
+            print(f"Folder '{folder}' is ready.")
+
+            left_txt_file = os.path.join(folder, f"{self.split}_left.txt")
+            right_txt_file = os.path.join(folder, f"{self.split}_right.txt")
+
+            if reset:
+                if os.path.exists(left_txt_file):
+                    os.remove(left_txt_file)
+                if os.path.exists(right_txt_file):
+                    os.remove(right_txt_file)
+
+            print(f"Preparing index for user {idx}")
+            self.all_data[idx] = {}
+
+            left_frame_stack, left_event_stack, left_labels = self.collect_data(idx, 0)
+            right_frame_stack, right_event_stack, right_labels = self.collect_data(idx, 1)
+
+            left_pols, left_xs, left_ys, left_ts = extract_event_components(left_event_stack)
+            right_pols, right_xs, right_ys, right_ts = extract_event_components(right_event_stack)
+
+            left_eye_data = make_structured_array(left_ts, left_xs, left_ys, left_pols, dtype=events_struct)
+            right_eye_data = make_structured_array(right_ts, right_xs, right_ys, right_pols, dtype=events_struct)
+
+            left_eye_data = self.input_transform(left_eye_data)
+            right_eye_data = self.input_transform(right_eye_data)
+
+            self.window_size_event_label_sync(left_eye_data, left_labels, idx, "left", left_txt_file)
+            self.window_size_event_label_sync(right_eye_data, right_labels, idx, "right", right_txt_file)
 
 
     def find_index_list(self, label):
@@ -447,6 +472,7 @@ class DatasetHz10000:
             label = hf['labels'][:]
 
         if self.target_transform is not None:
+            label = label.astype(np.float32)
             label = self.target_transform(label)
 
         data = torch.tensor(event)
@@ -597,7 +623,7 @@ class DatasetHz10000:
 
         return np.array(data_temp).astype(np.float32), np.array(np.column_stack((x_axis, y_axis))).astype(np.float32)
 
-    def window_size_event_label_sync(self, data, labels, user_id, eye, txt_file, lock):
+    def window_size_event_label_sync(self, data, labels, user_id, eye, txt_file):
         data = {
             "xy": np.hstack(
                 [data["x"].reshape(-1, 1), data["y"].reshape(-1, 1)]
@@ -617,17 +643,25 @@ class DatasetHz10000:
 
         end_time = start_time + self.fixed_window_dt
 
+        file_index = 0
 
         while(end_time < tab_last["timestamp"]):
 
             idx = np.searchsorted(labels["timestamp"], end_time, side="left")
             row = labels.iloc[idx]["row"]
             col = labels.iloc[idx]["col"]
-
+            if row < 0:
+                print("Row < 0: ", row)
+            if col < 0:
+                print("Row < 0: ", col)
             stimulus = labels.iloc[idx]["stimulus_type"]
             if stimulus == "st" or stimulus == "pa":
                 old_stimulus = stimulus
-                continue
+                idx = find_index_with_different_stimulus(labels, idx, stimulus)
+                start_time = labels["timestamp"].iloc[idx]   
+                row = labels.iloc[idx]["row"]
+                col = labels.iloc[idx]["col"]
+                end_time = start_time + self.fixed_window_dt   
             if old_row != row and old_col != col:
                 if stimulus == "s" and old_stimulus == "s":
                     state_label = int(1)
@@ -662,19 +696,19 @@ class DatasetHz10000:
  
             batch_label = np.column_stack((row, col, state_label)).astype(np.int8)
 
-            data_filename = f'{self.cache_data_dir}/{user_id}_{eye}_{idx}_data.h5'
-            label_filename = f'{self.cache_data_dir}/{user_id}_{eye}_{idx}_label.h5'
-
+            data_filename = f'{self.cache_data_dir}/{user_id}_{eye}_{file_index}_data.h5'
+            label_filename = f'{self.cache_data_dir}/{user_id}_{eye}_{file_index}_label.h5'
+            file_index += 1
             with h5py.File(data_filename, 'w') as hf:
                 hf.create_dataset('data', data=data_temp, compression='gzip')
 
             with h5py.File(label_filename, 'w') as hf:
                 hf.create_dataset('labels', data=batch_label, compression='gzip')
 
-            with lock:
-                with open(txt_file, 'a') as f:
-                    f.write(f'{data_filename}\n')
-
+            with open(txt_file, 'a') as f:
+                f.write(f'{data_filename}\n')
+            print("Write to txt file: ", data_filename)
+            print("Write to txt file: ", label_filename)
             start_time = end_time
             end_time = start_time + self.fixed_window_dt
 

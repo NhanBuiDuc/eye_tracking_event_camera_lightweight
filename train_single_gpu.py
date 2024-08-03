@@ -235,7 +235,7 @@ if __name__ == "__main__":
     torch.set_num_threads(10)
     torch.set_num_interop_threads(10)
 
-    config_path = "config/evb_eye.json"
+    config_path = "config/evb_eye2.json"
     if config_path is not None:
         with open(config_path, 'r') as f:
             config_params = json.load(f)
@@ -259,4 +259,4 @@ if __name__ == "__main__":
         # val_dataset = torch.utils.data.Subset(val_dataset, range(100))
         # test_dataset = torch.utils.data.Subset(val_dataset, range(100))
 
-    main(train_dataset, None, None, dataset_params, training_params)
+    main(train_dataset, None, None, dataset_params, training_params) 

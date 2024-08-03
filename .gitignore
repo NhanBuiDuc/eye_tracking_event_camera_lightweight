@@ -4,3 +4,7 @@ data/dataset/eye_data
 data/dataset/eye_data/** */
 cache/** */
 cache/eye_data/** */
+cache/stream_data/** */
+cache/voxel_data/** */
+cache/eval/** */
+cache/train/** */

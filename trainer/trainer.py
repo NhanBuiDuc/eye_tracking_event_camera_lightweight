@@ -51,6 +51,9 @@ class Trainer(ABC):
         self.snapshot_path = snapshot_path
         self.epochs_run = 0
         self.num_bins = dataset_params["num_bins"]
+        self.img_width = dataset_params["img_width"]
+        self.img_height = dataset_params["img_height"]
+        self.input_channel = dataset_params["input_channel"]
 
     def train(self, start_epoch, max_epochs):
         for epoch in range(start_epoch, max_epochs):
@@ -58,7 +61,7 @@ class Trainer(ABC):
             self._save_snapshot(epoch)
 
     def backward(self, loss):
-        loss.backward()
+        loss.backward(retain_graph=True)
 
     def save_csv(self, log_dict, path):
         path.parent.mkdir(parents=True, exist_ok=True)  # Ensure the directory exists
@@ -93,7 +96,7 @@ class Trainer(ABC):
         # self.train_data_loader.sampler.set_epoch(epoch)
         outputs = []
         targets = []
-        output = None
+        in_output = None
         hidden = None
         source_buffer = deque(maxlen=self.num_bins)
         # gpus = []
@@ -101,30 +104,34 @@ class Trainer(ABC):
             b, seq_len, c = target.shape
             source = source.to(self.gpu_id).float()
             target = target.to(self.gpu_id).float()
+            target = target.view(b, c)
             self.optimizer.zero_grad()
-            source_buffer.append(source)
+            source_buffer.append(source.clone())
             
             # Check if the buffer is full
             if len(source_buffer) == self.num_bins:
                 # Convert the deque to a tensor and reshape
-                merged_tensor = torch.stack(source_buffer, dim=1)
-                output, hidden = self.model(merged_tensor, hidden, output)
-                
-                # Use view to reshape the tensor to the desired shape
-                output = output.view(target.shape).float()
+                merged_tensor = torch.stack(list(source_buffer), dim=1)
+                if in_output is not None:
+                    in_output = in_output.detach()  # Detach in_output to break the computation graph
+                # Detach hidden states to prevent them from affecting new computations
+                if hidden is not None:
+                    hidden = [
+                        [(h.detach(), c.detach()) for h, c in layer_hidden_state]
+                        for layer_hidden_state in hidden
+                    ]
+                output, hidden = self.model(merged_tensor, hidden, in_output)
+                in_output = output.clone()
                 outputs.append(output.cpu().detach().numpy())
                 targets.append(target.cpu().detach().numpy())
-                # gpus.append(self.gpu_id)
-
+                
                 total_loss, loss_dict = self.criterions(output.float(), target.float())
                 total_loss.to(self.gpu_id)
-                # if self.gpu_id == 0:
                 for loss in loss_dict:
                     print(f"{(loss)} Train Loss: ", loss_dict[loss])
 
                 self.backward(total_loss)
                 self.optimizer.step()
-                
         # Concatenate all outputs and targets
         outputs = np.concatenate(outputs, axis=0)
         targets = np.concatenate(targets, axis=0)

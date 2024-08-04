@@ -25,7 +25,7 @@ from model.simple_convlstm2 import SimpleConvLSTM2
 import multiprocessing
 from metrics.AngularError import AngularError
 import re
-
+from loss.EyeGazeLoss import EyeGazeLoss
 def setup_ddp(rank, world_size):
     # Set necessary environment variables
     os.environ["MASTER_ADDR"] = "localhost"  # Replace with your master node address
@@ -208,8 +208,8 @@ def main(train_dataset, val_dataset, test_dataset, dataset_params, training_para
         )
     else:
         raise NotImplementedError
-
-    criterions_sequence = create_losses_sequence(losses, dataset_params, training_params)
+    loss = EyeGazeLoss()
+    # criterions_sequence = create_losses_sequence(losses, dataset_params, training_params)
     metrics_sequence = create_metrics_sequence(metrics)
     model, optimizer, start_epoch = load_checkpoint(snapshot_path, model, optimizer)
     dataloader_list = []
@@ -221,7 +221,7 @@ def main(train_dataset, val_dataset, test_dataset, dataset_params, training_para
     dataloader_list.append(val_dataloader)
     dataloader_list.append(test_dataloader)
     # train_dataloader = prepare_dataloader(train_dataset, batch_size)
-    trainer = Trainer(dataset_params, model.to(device) , device, dataloader_list, optimizer, scheduler, criterions_sequence, metrics_sequence, save_every, snapshot_path)
+    trainer = Trainer(dataset_params, model.to(device) , device, dataloader_list, optimizer, scheduler, loss, metrics_sequence, save_every, snapshot_path)
     trainer.train(start_epoch, num_epochs)
     # thread.join()
     # trainer.evaluate()

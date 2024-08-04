@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+import csv
 
 class Loss(ABC):
     """
@@ -71,21 +72,22 @@ class LossSequence:
             loss (Loss): Loss object to add.
         """
         self.losses.append(loss)
-    def to_csv(self, path):
-        """
-        Export the loss results to a CSV file.
+        
+    # def to_csv(self, path):
+    #     """
+    #     Export the loss results to a CSV file.
 
-        Parameters:
-            path (str): Name of the CSV file to create.
-        """
-        with open(path, 'w', newline='') as csvfile:
-            fieldnames = ['Loss Name', 'Loss Value']
-            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+    #     Parameters:
+    #         path (str): Name of the CSV file to create.
+    #     """
+    #     with open(path, 'w', newline='') as csvfile:
+    #         fieldnames = ['Loss Name', 'Loss Value']
+    #         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
 
-            writer.writeheader()
-            for loss in self.losses:
-                loss_name = type(loss).__name__
-                loss_value = loss(outputs, labels)  # Assuming outputs and labels are defined somewhere
-                writer.writerow({'Loss Name': loss_name, 'Loss Value': loss_value})
+    #         writer.writeheader()
+    #         for loss in self.losses:
+    #             loss_name = type(loss).__name__
+    #             loss_value = loss(outputs, labels)  # Assuming outputs and labels are defined somewhere
+    #             writer.writerow({'Loss Name': loss_name, 'Loss Value': loss_value})
 
-        print(f"Loss values exported to {path} successfully.")
+    #     print(f"Loss values exported to {path} successfully.")

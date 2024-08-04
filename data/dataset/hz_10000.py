@@ -233,7 +233,7 @@ class DatasetHz10000:
         self.frame_stack = []
         self.event_stack = []
         self.split = split
-            
+      
         # self.shuffle = shuffle
         for key, value in config_params.items():
             setattr(self, key, value)
@@ -454,10 +454,14 @@ class DatasetHz10000:
         return self.__class__.__name__
     
     def read_file_list(self):
-        txt_file = f'{self.cache_data_dir}/{self.split}.txt'
-        with open(txt_file, 'r') as f:
-            self.file_list = f.read().splitlines()
-      
+        self.file_list = []
+        for idx in self.data_idx:
+            txt_file = f'{self.annotation_dir}/user_{idx}/{self.split}_left.txt'
+            with open(txt_file, 'r') as f:
+                self.file_list.extend(f.read().splitlines())
+            txt_file = f'{self.annotation_dir}/user_{idx}/{self.split}_right.txt'
+            with open(txt_file, 'r') as f:
+                self.file_list.extend(f.read().splitlines())      
     def __len__(self):
         return len(self.file_list)
     

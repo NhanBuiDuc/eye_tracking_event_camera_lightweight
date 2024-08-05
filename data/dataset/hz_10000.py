@@ -477,6 +477,7 @@ class DatasetHz10000:
 
         if self.target_transform is not None:
             label = label.astype(np.float32)
+            label = np.abs(label)  # Convert all values to positive
             label = self.target_transform(label)
 
         data = torch.tensor(event)
@@ -698,7 +699,7 @@ class DatasetHz10000:
 
             data_temp = data_temp.clip(0, 1)  # no double events
  
-            batch_label = np.column_stack((row, col, state_label)).astype(np.int8)
+            batch_label = np.column_stack((row, col, state_label)).astype(np.int16)
 
             data_filename = f'{self.cache_data_dir}/{user_id}_{eye}_{file_index}_data.h5'
             label_filename = f'{self.cache_data_dir}/{user_id}_{eye}_{file_index}_label.h5'

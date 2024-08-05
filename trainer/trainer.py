@@ -121,11 +121,11 @@ class Trainer(ABC):
                         for layer_hidden_state in hidden
                     ]
                 output, hidden = self.model(merged_tensor, hidden, in_output)
+                total_loss = self.criterions(output.float(), target.float())
                 in_output = output.clone()
                 outputs.append(output.cpu().detach().numpy())
                 targets.append(target.cpu().detach().numpy())
                 
-                total_loss = self.criterions(output.float(), target.float())
                 self.backward(total_loss)
                 self.optimizer.step()
         # Concatenate all outputs and targets

@@ -11,5 +11,5 @@ if __name__ == "__main__":
     training_params = config_params["training_params"]
     train_dataset = DatasetHz10000(split="train", config_params=config_params)  # Example dataset
     val_dataset = DatasetHz10000(split="val", config_params=config_params)  # Example dataset
-    # train_dataset.prepare_unstructured_data(reset=True, data_idx=[idx for idx in range(15, 21)])
+    train_dataset.prepare_unstructured_data(reset=True, data_idx=[idx for idx in range(1, 2)])
     val_dataset.prepare_unstructured_data(reset=True)

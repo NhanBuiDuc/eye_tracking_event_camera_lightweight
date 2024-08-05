@@ -27,3 +27,5 @@ cache/stream_data/**/** */ */
 /cache_old/train/** */
 /cache_old/annotation/** */
 /cache_old/stream_data/**/** */ */
+
+/annotation/** */

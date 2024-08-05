@@ -82,7 +82,7 @@ dummy_input = torch.randn(1, 30, 2, 64, 64).to('cuda')
 # Calculate FLOPs
 flop_counter = FlopCountAnalysis(model, dummy_input)
 flops = flop_counter.total()
-
+print("Total Flops: ", flops)
 time_steps = [30, 60]
 for time_step in time_steps:
 

@@ -125,11 +125,7 @@ class Trainer(ABC):
                 outputs.append(output.cpu().detach().numpy())
                 targets.append(target.cpu().detach().numpy())
                 
-                total_loss, loss_dict = self.criterions(output.float(), target.float())
-                total_loss.to(self.gpu_id)
-                for loss in loss_dict:
-                    print(f"{(loss)} Train Loss: ", loss_dict[loss])
-
+                total_loss = self.criterions(output.float(), target.float())
                 self.backward(total_loss)
                 self.optimizer.step()
         # Concatenate all outputs and targets

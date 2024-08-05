@@ -23,7 +23,7 @@
     },
     "training_params": {
         "arch_name": "LSTM2",
-        "device": "cuda:2",
+        "device": "cuda:5",
         "metrics": ["angular_error"],
         "losses": ["mean_squared_error"],
         "lr_model": 1e-6,

@@ -22,7 +22,7 @@ last_out = torch.randn(1, 3)  # Adjust dimensions if necessary
 os.makedirs("checkpoints/onnx", exist_ok=True)
 
 # Save the model to an ONNX file
-onnx_model_path = "checkpoints/onnx/new_model.onnx"
+onnx_model_path = "checkpoints/onnx/simple_model.onnx"
 torch.onnx.export(
     model,
     (dummy_input, hidden_state, last_out),

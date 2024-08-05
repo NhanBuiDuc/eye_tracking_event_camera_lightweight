@@ -208,7 +208,8 @@ def main(train_dataset, val_dataset, test_dataset, dataset_params, training_para
         )
     else:
         raise NotImplementedError
-    loss = EyeGazeLoss()
+    loss = EyeGazeLoss(device = device)
+    loss = loss.to(device)
     # criterions_sequence = create_losses_sequence(losses, dataset_params, training_params)
     metrics_sequence = create_metrics_sequence(metrics)
     model, optimizer, start_epoch = load_checkpoint(snapshot_path, model, optimizer)

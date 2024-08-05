@@ -8,3 +8,22 @@ cache/stream_data/** */
 cache/voxel_data/** */
 cache/eval/** */
 cache/train/** */
+cache/annotation/** */
+cache/stream_data/**/** */ */
+/cache/** */
+/cache/eye_data/** */
+/cache/stream_data/** */
+/cache/voxel_data/** */
+/cache/eval/** */
+/cache/train/** */
+/cache/annotation/** */
+/cache/stream_data/**/** */ */
+
+/cache_old/** */
+/cache_old/eye_data/** */
+/cache_old/stream_data/** */
+/cache_old/voxel_data/** */
+/cache_old/eval/** */
+/cache_old/train/** */
+/cache_old/annotation/** */
+/cache_old/stream_data/**/** */ */

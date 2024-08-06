@@ -453,9 +453,11 @@ class DatasetHz10000:
     def __repr__(self):
         return self.__class__.__name__
     
-    def read_file_list(self):
+    def read_file_list(self, data_idx = None):
+        if data_idx == None:
+            data_idx = self.data_idx
         self.file_list = []
-        for idx in self.data_idx:
+        for idx in data_idx:
             txt_file = f'{self.annotation_dir}/user_{idx}/{self.split}_left.txt'
             with open(txt_file, 'r') as f:
                 self.file_list.extend(f.read().splitlines())

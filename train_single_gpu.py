@@ -253,7 +253,7 @@ if __name__ == "__main__":
     #     # train_dataset.load_cached_data([1, 2])
     #     pass
     torch.set_default_device(training_params["device"])
-    train_dataset.read_file_list()
+    train_dataset.read_file_list([1,2])
     if short_train:
         train_dataset = torch.utils.data.Subset(train_dataset, range(100))
         # val_dataset = torch.utils.data.Subset(val_dataset, range(100))

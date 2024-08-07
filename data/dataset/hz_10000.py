@@ -643,43 +643,86 @@ class DatasetHz10000:
         # start_label = (int(tab_start.row.item()), int(tab_start.col.item()))
         # end_label = (int(tab_last.row.item()), int(tab_last.col.item()))
         idx = find_closest_index(labels, [0, 0], return_last=False)
-        start_time = labels["timestamp"].iloc[idx]   
+        start_time = labels["timestamp"].iloc[idx]
         old_row = labels.iloc[idx]["row"]
         old_col = labels.iloc[idx]["col"]
-        old_stimulus = labels.iloc[idx]["stimulus_type"]
+        idx = find_closest_index(labels, [old_row, old_col], start_time, return_last=False) - 4
 
+        # old_row = labels.iloc[idx]["row"]
+        # old_col = labels.iloc[idx]["col"]
+        old_stimulus = labels.iloc[idx]["stimulus_type"]
+        start_time = labels["timestamp"].iloc[idx]
         end_time = start_time + self.fixed_window_dt
 
         file_index = 0
-
+        label_change_index = 0
+        on_changing = False
+        same_sample_count = 0
+        same_label = False
         while(end_time < tab_last["timestamp"]):
 
             idx = np.searchsorted(labels["timestamp"], end_time, side="left")
-            row = labels.iloc[idx]["row"]
-            col = labels.iloc[idx]["col"]
+            stimulus = labels.iloc[idx]["stimulus_type"]
+            if stimulus == "s":
+                temp_row = labels.iloc[idx]["row"]
+                temp_col = labels.iloc[idx]["col"]
+                if on_changing:
+                    row = labels.iloc[idx]["row"]
+                    col = labels.iloc[idx]["col"]
+                    if label_change_index < int(40000 * 10 / self.fixed_window_dt):
+                        row = old_row
+                        col = old_col
+                        label_change_index = label_change_index + 1
+                    else:
+                        same_label = True
+                        label_change_index = 0
+                else:
+                    row = old_row
+                    col = old_col  
+                if same_label:
+                    on_changing = False
+                    same_sample_count = same_sample_count + 1
+                    old_row = temp_row
+                    old_col = temp_col
+                    row = temp_row
+                    col = temp_col  
+            else:
+                row = labels.iloc[idx]["row"]
+                col = labels.iloc[idx]["col"]
+
             if row < 0:
                 print("Row < 0: ", row)
             if col < 0:
                 print("Row < 0: ", col)
-            stimulus = labels.iloc[idx]["stimulus_type"]
+
             if stimulus == "st" or stimulus == "pa":
+                print("stimulus: ", stimulus)
                 old_stimulus = stimulus
                 idx = find_index_with_different_stimulus(labels, idx, stimulus)
                 start_time = labels["timestamp"].iloc[idx]   
                 row = labels.iloc[idx]["row"]
                 col = labels.iloc[idx]["col"]
-                end_time = start_time + self.fixed_window_dt   
-            if old_row != row and old_col != col:
-                if stimulus == "s" and old_stimulus == "s":
-                    state_label = int(1)
+                end_time = start_time + self.fixed_window_dt
+            if stimulus == "s":
+                if old_row != temp_row or old_col != temp_col:
+                    on_changing = True
+                    if same_label == False:     
+                        if stimulus == "s" and old_stimulus == "s":
+                            state_label = int(1)
+                        elif stimulus == "s" and old_stimulus != "s":
+                            state_label = int(3)
+                    else:
+                        state_label = int(0)
+                else:
+                    state_label = int(0)
+            elif stimulus == "p":
                 if stimulus == "p" and old_stimulus == "p":
                     state_label = int(2)
-                else:
+                elif stimulus == "p" and old_stimulus != "p":
                     state_label = int(3)
-            else:
-                state_label = int(0)
-            old_row = row
-            old_col = col
+                else:
+                    state_label = int(0)
+            old_stimulus = stimulus
             # frame
             data_temp = np.zeros(
                 (self.input_channel, self.img_width, self.img_height)
@@ -711,13 +754,26 @@ class DatasetHz10000:
 
             with h5py.File(label_filename, 'w') as hf:
                 hf.create_dataset('labels', data=batch_label, compression='gzip')
-
+            print(batch_label)
             with open(txt_file, 'a') as f:
                 f.write(f'{data_filename}\n')
             print("Write to txt file: ", data_filename)
             print("Write to txt file: ", label_filename)
-            start_time = end_time
-            end_time = start_time + self.fixed_window_dt
+            if stimulus == "s":
+                if same_sample_count < int(400000/self.fixed_window_dt):
+                    start_time = end_time
+                    end_time = start_time + self.fixed_window_dt
+                else:
+                    start_time = end_time
+                    end_time = start_time + self.fixed_window_dt                
+                    idx = find_closest_index(labels, [old_row, old_col], end_time, return_last=False) - 4
+                    start_time = labels["timestamp"].iloc[idx]
+                    end_time = start_time + self.fixed_window_dt
+                    same_sample_count = 0
+                    same_label = False
+            else:
+                start_time = end_time
+                end_time = start_time + self.fixed_window_dt
 
     def load_static_window(self, data, labels):
         data = {

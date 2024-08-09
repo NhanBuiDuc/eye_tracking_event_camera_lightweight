@@ -14,16 +14,16 @@ class EyeGazeLoss(nn.Module):
         output_mse = output[:, :2].clone()
         target_mse = target[:, :2].clone()
         
-        output_softmax = output[:, 2].clone()
-        target_softmax = target[:, 2].clone().long()  # Ensure the target for softmax is of type long
+        output_softmax = output[:, 2:].clone()
+        target_softmax = target[:, 2:].clone()  # Ensure the target for softmax is of type long
         
         # Compute the MSE loss for the first two dimensions
         mse_loss = self.mse_loss(output_mse, target_mse).to(self.device)
         
         # Compute the CrossEntropy loss for the third dimension
-        cross_entropy_loss = self.cross_entropy_loss(output_softmax.unsqueeze(1), target_softmax).to(self.device)
+        cross_entropy_loss = self.cross_entropy_loss(output_softmax, target_softmax).to(self.device)
         
         # Combine the losses
-        loss = 0.7 * mse_loss + 0.3 * cross_entropy_loss
+        loss = mse_loss + 0.5 * cross_entropy_loss
         loss = loss.to(self.device)
         return loss

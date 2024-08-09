@@ -134,7 +134,7 @@ class ConvLSTM(nn.Module):
         self.cell_list = nn.ModuleList(cell_list)
 
         # Define a linear layer to transform tensor_2
-        self.hidden_linear = nn.Linear(3, hidden_dim[0] * height * width)  # Transform 3 features to 4096 (64*6
+        self.hidden_linear = nn.Linear(6, hidden_dim[0] * height * width)  # Transform 3 features to 4096 (64*6
         # Define a convolutional layer to reduce back to 8 channels
         self.hidden_conv_h = nn.Conv2d(in_channels=hidden_dim[0] * 2, out_channels=hidden_dim[0], kernel_size=1, stride=1, padding=0)
         self.hidden_conv_c = nn.Conv2d(in_channels=hidden_dim[0] * 2, out_channels=hidden_dim[0], kernel_size=1, stride=1, padding=0)
@@ -245,7 +245,7 @@ class SimpleConvLSTM2(nn.Module):
         self.pool4 = nn.MaxPool3d(kernel_size=(1, 2, 2))
         self.fc1 = nn.Linear(1024, 512)
         # self.drop = nn.Dropout(0.5)
-        self.fc2 = nn.Linear(512, 3)
+        self.fc2 = nn.Linear(512, 6)
         # get_summary(self)
 
     def forward(self, x, hidden_states_input=None, last_out = None):
@@ -329,6 +329,14 @@ class SimpleConvLSTM2(nn.Module):
             # data = self.drop(data)
             data = self.fc2(data)
 
+        coordinate_pred = data[:, :2]  # Shape: (batch_size, 2, h, w)
+
+        # 2. Apply softmax to the last four channels
+        state_pred = data[:, 2:]  # Shape: (batch_size, 4, h, w)
+        state_pred = F.softmax(state_pred, dim=1)  # Apply softmax on the class dimension
+
+        # 3. Concatenate the results back together
+        data = torch.cat((coordinate_pred, state_pred), dim=1)
         return data, hidden_states
 
 # if __name__ == "__main__":

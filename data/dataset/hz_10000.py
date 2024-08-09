@@ -224,6 +224,25 @@ def get_path_info(path):
     return {'index': index, 'row': row, 'col': col, 'stimulus_type': stimulus_type,
             'timestamp': timestamp}
 
+def extend_target_with_one_hot(label):
+    # Extract the multiclass classification values (last column)
+    class_labels = label[:, 2].astype(int)  # Convert to integer type
+
+    # Number of classes
+    num_classes = 4  # As you mentioned 0-4, so 5 classes
+
+    # Initialize one-hot encoded matrix
+    one_hot = np.zeros((label.shape[0], num_classes), dtype=np.float32)
+
+    # Create one-hot encoding
+    rows = np.arange(label.shape[0])
+    one_hot[rows, class_labels] = 1
+
+    # Concatenate the original labels (first two columns) with one-hot encoded vectors
+    extended_label = np.hstack((label[:, :2], one_hot))
+
+    return extended_label
+
 class DatasetHz10000:
     def __init__(
         self,
@@ -480,7 +499,8 @@ class DatasetHz10000:
         if self.target_transform is not None:
             label = label.astype(np.float32)
             label = np.abs(label)  # Convert all values to positive
-            label = self.target_transform(label)
+            label[:, :2] = self.target_transform(label[:, :2])
+            label = extend_target_with_one_hot(label)
 
         data = torch.tensor(event)
         label = torch.tensor(label)

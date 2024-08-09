@@ -122,6 +122,7 @@ class Trainer(ABC):
                     ]
                 output, hidden = self.model(merged_tensor, hidden, in_output)
                 total_loss = self.criterions(output.float(), target.float())
+                print("Train Loss: ", total_loss)
                 in_output = output.clone()
                 outputs.append(output.cpu().detach().numpy())
                 targets.append(target.cpu().detach().numpy())

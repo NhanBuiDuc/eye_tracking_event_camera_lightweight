@@ -261,7 +261,7 @@ class SimpleConvLSTM2(nn.Module):
         else:
             x, h1 = self.convlstm1(x, h1, last_out.clone())
         x = x[0].permute(0, 2, 1, 3, 4)
-        x = self.bn1(x)
+        # x = self.bn1(x)
         x = F.relu(x)
         x = self.pool1(x)
         hidden_states.append(h1)
@@ -278,7 +278,7 @@ class SimpleConvLSTM2(nn.Module):
             x, h2 = self.convlstm2(x, h2, last_out.clone())
 
         x = x[0].permute(0, 2, 1, 3, 4)
-        x = self.bn2(x)
+        # x = self.bn2(x)
         x = F.relu(x)
         x = self.pool2(x)
         hidden_states.append(h2)
@@ -296,7 +296,7 @@ class SimpleConvLSTM2(nn.Module):
             x, h3 = self.convlstm3(x, h3, last_out.clone())
 
         x = x[0].permute(0, 2, 1, 3, 4)
-        x = self.bn3(x)
+        # x = self.bn3(x)
         x = F.relu(x)
         x = self.pool3(x)
         hidden_states.append(h3)
@@ -314,7 +314,7 @@ class SimpleConvLSTM2(nn.Module):
             x, h4 = self.convlstm4(x, h4, last_out.clone())
 
         x = x[0].permute(0, 2, 1, 3, 4)
-        x = self.bn4(x)
+        # x = self.bn4(x)
         x = F.relu(x)
         x = self.pool4(x)
         hidden_states.append(h4)

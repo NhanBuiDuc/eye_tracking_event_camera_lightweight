@@ -56,8 +56,19 @@ class Trainer(ABC):
         self.input_channel = dataset_params["input_channel"]
 
     def train(self, start_epoch, max_epochs):
+        best_train_loss = float('inf')  # Initialize with infinity
+
         for epoch in range(start_epoch, max_epochs):
-            self._run_epoch(epoch, max_epochs)
+            train_loss = self._run_epoch(epoch, max_epochs)
+            
+            # Check if the training loss has improved
+            if train_loss < best_train_loss:
+                best_train_loss = train_loss
+                print(f"Training loss improved to {best_train_loss}")
+            else:
+                print(f"Training loss did not improve, stepping scheduler.")
+                self.scheduler.step()
+
             self._save_snapshot(epoch)
 
     def backward(self, loss):
@@ -99,6 +110,7 @@ class Trainer(ABC):
         in_output = None
         hidden = None
         source_buffer = deque(maxlen=self.num_bins)
+        total_loss = 0
         # gpus = []
         for source, target in tqdm(self.train_data_loader):
             b, seq_len, c = target.shape
@@ -121,14 +133,19 @@ class Trainer(ABC):
                         for layer_hidden_state in hidden
                     ]
                 output, hidden = self.model(merged_tensor, hidden, in_output)
-                total_loss = self.criterions(output.float(), target.float())
-                print("Train Loss: ", total_loss)
+                loss = self.criterions(output.float(), target.float())
+                total_loss += loss.item()
+                print("Train Loss: ", loss)
+                
                 in_output = output.clone()
                 outputs.append(output.cpu().detach().numpy())
                 targets.append(target.cpu().detach().numpy())
                 
-                self.backward(total_loss)
+                self.backward(loss)
                 self.optimizer.step()
+
+        # Calculate the average loss
+        avg_loss = total_loss / len(self.train_data_loader)
         # Concatenate all outputs and targets
         outputs = np.concatenate(outputs, axis=0)
         targets = np.concatenate(targets, axis=0)
@@ -139,7 +156,7 @@ class Trainer(ABC):
         }
         path = Path("cache/train/")
         self.save_numpy(log_dict, path)
-
+        return avg_loss
 
     # def _run_epoch(self, epoch, max_epochs):
     #     self.model.train()

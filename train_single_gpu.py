@@ -190,10 +190,11 @@ def main(train_dataset, val_dataset, test_dataset, dataset_params, training_para
     if training_params["optimizer"] == "Adam":
         optimizer = torch.optim.Adam(
             params= model.parameters(),
-            lr=lr_model
+            lr=lr_model,
+            weight_decay=1e-4
         )  # weight_decay=5e-5
     elif training_params["optimizer"] == "SGD":
-        optimizer = torch.optim.SGD(lr=lr_model, momentum=0.9)
+        optimizer = torch.optim.SGD(lr=lr_model, momentum=0.9, weight_decay=1e-4)
     else:
         raise NotImplementedError
 

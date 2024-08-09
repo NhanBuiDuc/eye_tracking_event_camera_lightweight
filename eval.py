@@ -25,6 +25,7 @@ import multiprocessing
 import re
 from metrics.AngularError import AngularError
 import numpy as np
+from loss.EyeGazeLoss import EyeGazeLoss
 
 def setup_ddp(rank, world_size):
     # Set necessary environment variables
@@ -235,8 +236,9 @@ def main(train_dataset, val_dataset, test_dataset, dataset_params, training_para
     dataloader_list.append(train_dataloader)
     dataloader_list.append(val_dataloader)
     dataloader_list.append(test_dataloader)
+    loss = EyeGazeLoss(device = device)
     # train_dataloader = prepare_dataloader(train_dataset, batch_size)
-    trainer = Trainer(model, device, dataloader_list, optimizer, scheduler, criterions_sequence, metrics_sequence, save_every, snapshot_path)
+    trainer = Trainer(dataset_params, model.to(device) , device, dataloader_list, optimizer, scheduler, loss, metrics_sequence, save_every, snapshot_path)
     # trainer.train(num_epochs)
     # thread.join()
     trainer.evaluate()

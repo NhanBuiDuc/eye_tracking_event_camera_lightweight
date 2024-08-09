@@ -60,6 +60,7 @@ def prepare_dataloader(dataset, batch_size):
             dataset,
             batch_size=batch_size,
             shuffle=False,
+            drop_last=True
         )
     except:
         # Function to prepare DataLoader with DistributedSampler
@@ -67,6 +68,7 @@ def prepare_dataloader(dataset, batch_size):
             dataset,
             batch_size=batch_size,
             shuffle=False,
+            drop_last=True
         )
 
 def create_metrics_sequence(metrics: list):
@@ -262,7 +264,7 @@ if __name__ == "__main__":
     torch.set_num_threads(10)
     torch.set_num_interop_threads(10)
 
-    config_path = "config/evb_eye1.json"
+    config_path = "config/evb_eye2.json"
     if config_path is not None:
         with open(config_path, 'r') as f:
             config_params = json.load(f)

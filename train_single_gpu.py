@@ -142,8 +142,6 @@ def main(train_dataset, val_dataset, test_dataset, dataset_params, training_para
     # thread = threading.Thread(target=val_dataset.load_cached_data)
 
     # # Start the thread
-    # thread.start()
-    config_path = "config/evb_eye_fast.json"
 
     arch_name = training_params["arch_name"]
     optimizer =  training_params["optimizer"]
@@ -255,7 +253,7 @@ if __name__ == "__main__":
     #     # train_dataset.load_cached_data([1, 2])
     #     pass
     torch.set_default_device(training_params["device"])
-    train_dataset.read_file_list([1,2])
+    train_dataset.read_file_list()
     if short_train:
         train_dataset = torch.utils.data.Subset(train_dataset, range(100))
         # val_dataset = torch.utils.data.Subset(val_dataset, range(100))

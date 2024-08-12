@@ -101,6 +101,63 @@ class Trainer(ABC):
             np.save(filename, value)
 
             
+    # def _run_epoch(self, epoch, max_epochs):
+    #     self.model.train()
+    #     print(f"[Epoch {epoch} | Batchsize: {self.train_data_loader.batch_size} | Steps: {len(self.train_data_loader)}")
+    #     # self.train_data_loader.sampler.set_epoch(epoch)
+    #     outputs = []
+    #     targets = []
+    #     in_output = None
+    #     hidden = None
+    #     source_buffer = deque(maxlen=self.num_bins)
+    #     total_loss = 0
+    #     # gpus = []
+    #     for source, target in tqdm(self.train_data_loader):
+    #         b, seq_len, c = target.shape
+    #         source = source.to(self.gpu_id).float()
+    #         target = target.to(self.gpu_id).float()
+    #         target = target.view(b, c)
+    #         self.optimizer.zero_grad()
+    #         source_buffer.append(source.clone())
+            
+    #         # Check if the buffer is full
+    #         if len(source_buffer) == self.num_bins:
+    #             # Convert the deque to a tensor and reshape
+    #             merged_tensor = torch.stack(list(source_buffer), dim=1)
+    #             if in_output is not None:
+    #                 in_output = in_output.detach()  # Detach in_output to break the computation graph
+    #             # Detach hidden states to prevent them from affecting new computations
+    #             if hidden is not None:
+    #                 hidden = [
+    #                     [(h.detach(), c.detach()) for h, c in layer_hidden_state]
+    #                     for layer_hidden_state in hidden
+    #                 ]
+    #             output, hidden = self.model(merged_tensor, hidden, in_output)
+    #             loss = self.criterions(output.float(), target.float())
+    #             total_loss += loss.item()
+    #             print("Train Loss: ", loss)
+                
+    #             in_output = output.clone()
+    #             outputs.append(output.cpu().detach().numpy())
+    #             targets.append(target.cpu().detach().numpy())
+                
+    #             self.backward(loss)
+    #             self.optimizer.step()
+
+    #     # Calculate the average loss
+    #     avg_loss = total_loss / len(self.train_data_loader)
+    #     # Concatenate all outputs and targets
+    #     outputs = np.concatenate(outputs, axis=0)
+    #     targets = np.concatenate(targets, axis=0)
+
+    #     log_dict = {
+    #         f"gpu_{self.gpu_id}_output": outputs,
+    #         f"gpu_{self.gpu_id}_target": targets,
+    #     }
+    #     path = Path("cache/train/")
+    #     self.save_numpy(log_dict, path)
+    #     return avg_loss
+
     def _run_epoch(self, epoch, max_epochs):
         self.model.train()
         print(f"[Epoch {epoch} | Batchsize: {self.train_data_loader.batch_size} | Steps: {len(self.train_data_loader)}")
@@ -111,16 +168,28 @@ class Trainer(ABC):
         hidden = None
         source_buffer = deque(maxlen=self.num_bins)
         total_loss = 0
-        # gpus = []
+
+        # Initialize a variable to hold the accumulated tensor
+        accumulated_tensor = torch.zeros((self.num_bins, *source.shape[1:]), device=self.gpu_id)
+
         for source, target in tqdm(self.train_data_loader):
             b, seq_len, c = target.shape
             source = source.to(self.gpu_id).float()
             target = target.to(self.gpu_id).float()
             target = target.view(b, c)
             self.optimizer.zero_grad()
+
+            # Add the new source to the buffer
+            if len(source_buffer) == self.num_bins:
+                # Remove the oldest sample from the accumulated tensor
+                oldest_sample = source_buffer.popleft()
+                accumulated_tensor -= oldest_sample
+                
+            # Add the new sample to the buffer and the accumulated tensor
             source_buffer.append(source.clone())
-            
-            # Check if the buffer is full
+            accumulated_tensor += source
+
+            # Process the accumulated tensor when the buffer is full
             if len(source_buffer) == self.num_bins:
                 # Convert the deque to a tensor and reshape
                 merged_tensor = torch.stack(list(source_buffer), dim=1)
@@ -132,15 +201,15 @@ class Trainer(ABC):
                         [(h.detach(), c.detach()) for h, c in layer_hidden_state]
                         for layer_hidden_state in hidden
                     ]
-                output, hidden = self.model(merged_tensor, hidden, in_output)
+                output, hidden = self.model(accumulated_tensor, hidden, in_output)
                 loss = self.criterions(output.float(), target.float())
                 total_loss += loss.item()
                 print("Train Loss: ", loss)
-                
+
                 in_output = output.clone()
                 outputs.append(output.cpu().detach().numpy())
                 targets.append(target.cpu().detach().numpy())
-                
+
                 self.backward(loss)
                 self.optimizer.step()
 
@@ -157,60 +226,6 @@ class Trainer(ABC):
         path = Path("cache/train/")
         self.save_numpy(log_dict, path)
         return avg_loss
-
-    # def _run_epoch(self, epoch, max_epochs):
-    #     self.model.train()
-    #     print(f"[Epoch {epoch} | Batchsize: {self.train_data_loader.batch_size} | Steps: {len(self.train_data_loader)}")
-    #     # self.train_data_loader.sampler.set_epoch(epoch)
-    #     outputs = []
-    #     targets = []
-    #     # gpus = []
-    #     for source, target in tqdm(self.train_data_loader):
-    #         b, seq_len, c = target.shape
-    #         timestep_outputs = []
-
-    #         source = source.to(self.gpu_id).float()
-    #         target = target.to(self.gpu_id).float()
-    #         self.optimizer.zero_grad()
-    #         data = source.clone()
-    #         for t in range(seq_len):
-
-    #             if t == 0:
-    #                 out, hidden_states = self.model(data[:, t, :, :, :].view(b, 1, *data.shape[2:]), None)
-    #             else:
-    #                 out, hidden_states = self.model(data[:, t, :, :, :].view(b, 1, *data.shape[2:]), hidden_states)
-    #             timestep_outputs.append(out)
-
-    #         # Convert timestep_outputs to a tensor
-    #         output = torch.stack(timestep_outputs).float()
-            
-    #         # Ensure the output tensor is contiguous before using view
-    #         output = output.contiguous().float()
-            
-    #         # Use view to reshape the tensor to the desired shape
-    #         output = output.view(target.shape).float()
-    #         outputs.append(output.cpu().detach().numpy())
-    #         targets.append(target.cpu().detach().numpy())
-    #         # gpus.append(self.gpu_id)
-
-    #         total_loss, loss_dict = self.criterions(output.float(), target.float())
-    #         total_loss.to(self.gpu_id)
-    #         # if self.gpu_id == 0:
-    #         for loss in loss_dict:
-    #             print(f"{(loss)} Train Loss: ", loss_dict[loss])
-
-    #         self.backward(total_loss)
-    #         self.optimizer.step()
-    #     # Concatenate all outputs and targets
-    #     outputs = np.concatenate(outputs, axis=0)
-    #     targets = np.concatenate(targets, axis=0)
-
-    #     log_dict = {
-    #         f"gpu_{self.gpu_id}_output": outputs,
-    #         f"gpu_{self.gpu_id}_target": targets,
-    #     }
-    #     path = Path("cache/train/")
-    #     self.save_numpy(log_dict, path)
 
     def evaluate(self):
         self.model.eval()

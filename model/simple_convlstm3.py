@@ -357,7 +357,7 @@ class SimpleConvLSTM3(nn.Module):
         x_list=[]
         b, c, seq, h, w = x.size()
 
-        data = data.reshape(b, -1)
+        data = x.reshape(b, -1)
         data = F.relu(self.fc1(data))
         # data = self.drop(data)
 

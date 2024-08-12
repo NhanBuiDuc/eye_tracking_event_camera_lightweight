@@ -766,8 +766,10 @@ class DatasetHz10000:
  
             batch_label = np.column_stack((row, col, state_label)).astype(np.int16)
 
-            data_filename = f'{self.cache_data_dir}/user_id/{user_id}_{eye}_{file_index}_data.h5'
-            label_filename = f'{self.cache_data_dir}/user_id/{user_id}_{eye}_{file_index}_label.h5'
+
+            os.makedirs(f'{self.cache_data_dir}/{user_id}', exist_ok=True)
+            data_filename = f'{self.cache_data_dir}/{user_id}/{user_id}_{eye}_{file_index}_data.h5'
+            label_filename = f'{self.cache_data_dir}/{user_id}/{user_id}_{eye}_{file_index}_label.h5'
             file_index += 1
             with h5py.File(data_filename, 'w') as hf:
                 hf.create_dataset('data', data=data_temp, compression='gzip')

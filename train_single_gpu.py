@@ -23,7 +23,7 @@ from model.simple_convlstm import SimpleConvLSTM
 from model.simple_convlstm1 import SimpleConvLSTM1
 from model.simple_convlstm2 import SimpleConvLSTM2
 from model.simple_convlstm3 import SimpleConvLSTM3
-import multiprocessing
+from model.resnet import resnet18
 from metrics.AngularError import AngularError
 import re
 from loss.EyeGazeLoss import EyeGazeLoss
@@ -193,6 +193,8 @@ def main(train_dataset, val_dataset, test_dataset, dataset_params, training_para
             width=dataset_params["img_width"],
             input_dim=dataset_params["input_channel"]
         )
+    elif arch_name == "Resnet": 
+        model = resnet18(num_classes = 6)
     # Initialize Optimizer
     if training_params["optimizer"] == "Adam":
         optimizer = torch.optim.Adam(

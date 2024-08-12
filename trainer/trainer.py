@@ -169,11 +169,12 @@ class Trainer(ABC):
         source_buffer = deque(maxlen=self.num_bins)
         total_loss = 0
 
-        # Initialize a variable to hold the accumulated tensor
-        accumulated_tensor = torch.zeros((self.num_bins, *source.shape[1:]), device=self.gpu_id)
+        # # Initialize a variable to hold the accumulated tensor
+        # accumulated_tensor = torch.zeros((self.num_bins, *source.shape[1:]), device=self.gpu_id)
 
         for source, target in tqdm(self.train_data_loader):
             b, seq_len, c = target.shape
+
             source = source.to(self.gpu_id).float()
             target = target.to(self.gpu_id).float()
             target = target.view(b, c)
@@ -187,12 +188,15 @@ class Trainer(ABC):
                 
             # Add the new sample to the buffer and the accumulated tensor
             source_buffer.append(source.clone())
-            accumulated_tensor += source
 
+            if len(source_buffer) == 1:
+                accumulated_tensor = source
+            accumulated_tensor += source
+            
             # Process the accumulated tensor when the buffer is full
             if len(source_buffer) == self.num_bins:
                 # Convert the deque to a tensor and reshape
-                merged_tensor = torch.stack(list(source_buffer), dim=1)
+                input_tensor = torch.tensor(accumulated_tensor).to(self.gpu_id)
                 if in_output is not None:
                     in_output = in_output.detach()  # Detach in_output to break the computation graph
                 # Detach hidden states to prevent them from affecting new computations
@@ -201,7 +205,7 @@ class Trainer(ABC):
                         [(h.detach(), c.detach()) for h, c in layer_hidden_state]
                         for layer_hidden_state in hidden
                     ]
-                output, hidden = self.model(accumulated_tensor, hidden, in_output)
+                output, hidden = self.model(input_tensor, hidden, in_output)
                 loss = self.criterions(output.float(), target.float())
                 total_loss += loss.item()
                 print("Train Loss: ", loss)

@@ -360,7 +360,9 @@ class SimpleConvLSTM3(nn.Module):
         data = data.reshape(b, -1)
         data = F.relu(self.fc1(data))
         # data = self.drop(data)
-        data = self.fc2(data)
+
+        data = F.relu(self.fc2(data))
+        data = self.fc3(data)
         coordinate_pred = data[:, :2]  # Shape: (batch_size, 2, h, w)
         unnormalized_coordinates = unnormalize_coordinates(coordinate_pred, 
                                                             self.davis_sensor_size, 

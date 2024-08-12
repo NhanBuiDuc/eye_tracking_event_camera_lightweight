@@ -29,22 +29,6 @@ class Embedding(nn.Module):
 
         return output
 
-# Example of usage:
-# Initialize the model
-model = CustomProcessing()
-
-# Create an input tensor of shape (batch_size, 2, 64, 64)
-input_tensor = torch.randn(1, 2, 64, 64)
-
-# Pass the input tensor through the model
-output = model(input_tensor)
-
-print("Output shape:", output.shape)  # Should print: Output shape: torch.Size([1, 3, 64, 64])
-
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-
 class BasicBlock(nn.Module):
     expansion = 1
 

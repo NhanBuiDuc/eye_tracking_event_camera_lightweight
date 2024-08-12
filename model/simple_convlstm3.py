@@ -368,7 +368,6 @@ class SimpleConvLSTM3(nn.Module):
                                                             self.davis_sensor_size, 
                                                             self.width, 
                                                             self.height)
-        unnormalized_coordinates = F.relu(unnormalized_coordinates)
         # Extract unnormalized coordinates
         x = unnormalized_coordinates[:, 0]
         y = unnormalized_coordinates[:, 1]

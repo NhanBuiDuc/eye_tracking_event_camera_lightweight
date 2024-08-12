@@ -250,9 +250,9 @@ def unnormalize_coordinates(coordinate_pred, davis_sensor_size, img_width, img_h
     return torch.stack((unnormalized_x, unnormalized_y), dim=1)
 
 
-class SimpleConvLSTM2(nn.Module):
+class SimpleConvLSTM3(nn.Module):
     def __init__(self, height, width, input_dim):
-        super(SimpleConvLSTM2, self).__init__() 
+        super(SimpleConvLSTM3, self).__init__() 
 
         self.davis_sensor_size = [260, 346]
         self.width = width
@@ -385,7 +385,7 @@ class SimpleConvLSTM2(nn.Module):
         # 2. Apply softmax to the last four channels
         state_pred = data[:, 2:]  # Shape: (batch_size, 4, h, w)
         state_pred = F.softmax(state_pred, dim=1)  # Apply softmax on the class dimension
-        
+
         # 3. Concatenate the results back together
         pred = torch.cat((coordinate_pred, state_pred), dim=1)
 

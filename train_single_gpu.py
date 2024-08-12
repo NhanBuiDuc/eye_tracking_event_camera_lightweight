@@ -22,6 +22,7 @@ from loss.YoloLoss import YoloLoss
 from model.simple_convlstm import SimpleConvLSTM
 from model.simple_convlstm1 import SimpleConvLSTM1
 from model.simple_convlstm2 import SimpleConvLSTM2
+from model.simple_convlstm3 import SimpleConvLSTM3
 import multiprocessing
 from metrics.AngularError import AngularError
 import re
@@ -182,6 +183,12 @@ def main(train_dataset, val_dataset, test_dataset, dataset_params, training_para
         )
     elif arch_name == "LSTM2": 
         model = SimpleConvLSTM2(
+            height=dataset_params["img_height"],
+            width=dataset_params["img_width"],
+            input_dim=dataset_params["input_channel"]
+        )
+    elif arch_name == "LSTM3": 
+        model = SimpleConvLSTM3(
             height=dataset_params["img_height"],
             width=dataset_params["img_width"],
             input_dim=dataset_params["input_channel"]

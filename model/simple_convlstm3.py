@@ -279,8 +279,8 @@ class SimpleConvLSTM3(nn.Module):
         self.fc3 = nn.Linear(20, 6)
         # get_summary(self)
         self.params = nn.ParameterDict({
-            'a': nn.Parameter(torch.randn(6)),  # a0 to a5
-            'b': nn.Parameter(torch.randn(6))   # b0 to b5
+            'a': nn.Parameter(torch.full((6,), -5.0)),  # Fill 'a' with -5
+            'b': nn.Parameter(torch.full((6,), -5.0))   # Fill 'b' with -5
         })
     def forward(self, x, hidden_states_input=None, last_out = None):
 
@@ -368,6 +368,7 @@ class SimpleConvLSTM3(nn.Module):
                                                             self.davis_sensor_size, 
                                                             self.width, 
                                                             self.height)
+        unnormalized_coordinates = F.relu(unnormalized_coordinates)
         # Extract unnormalized coordinates
         x = unnormalized_coordinates[:, 0]
         y = unnormalized_coordinates[:, 1]
@@ -384,7 +385,7 @@ class SimpleConvLSTM3(nn.Module):
         sy = sy /  self.stimulus_screen_size[0]
 
         coordinate_pred = torch.stack((sx, sy), dim=1)
-
+        coordinate_pred = F.sigmoid(coordinate_pred)
         # 2. Apply softmax to the last four channels
         state_pred = data[:, 2:]  # Shape: (batch_size, 4, h, w)
         state_pred = F.softmax(state_pred, dim=1)  # Apply softmax on the class dimension

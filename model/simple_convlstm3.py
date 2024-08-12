@@ -223,11 +223,41 @@ class ConvLSTM(nn.Module):
         if not isinstance(param, list):
             param = [param] * num_layers
         return param
-        
+
+
+def unnormalize_coordinates(coordinate_pred, davis_sensor_size, img_width, img_height):
+    # Extract the scaling factors
+    max_x_range = davis_sensor_size[0]
+    max_y_range = davis_sensor_size[1]
+    desired_x = img_width
+    desired_y = img_height
+    scale_x = desired_x / max_x_range
+    scale_y = desired_y / max_y_range
+    
+    # Convert scaling factors to tensors
+    scale_x_tensor = torch.tensor(scale_x, dtype=torch.float32)
+    scale_y_tensor = torch.tensor(scale_y, dtype=torch.float32)
+    max_x_range_tensor = torch.tensor(max_x_range, dtype=torch.float32)
+    max_y_range_tensor = torch.tensor(max_y_range, dtype=torch.float32)
+    
+    # Convert the tensor to float if it's not already
+    coordinate_pred = coordinate_pred.float()
+    
+    # Un-normalize the coordinates
+    unnormalized_x = coordinate_pred[:, 0] / scale_x_tensor * max_x_range_tensor
+    unnormalized_y = coordinate_pred[:, 1] / scale_y_tensor * max_y_range_tensor
+    
+    return torch.stack((unnormalized_x, unnormalized_y), dim=1)
+
+
 class SimpleConvLSTM2(nn.Module):
     def __init__(self, height, width, input_dim):
         super(SimpleConvLSTM2, self).__init__() 
 
+        self.davis_sensor_size = [260, 346]
+        self.width = width
+        self.height = height
+        self.stimulus_screen_size = [1080, 1920]
         self.convlstm1 = ConvLSTM(input_dim=input_dim, hidden_dim=8, height = height, width = width, kernel_size=(3, 3), num_layers=1, batch_first=True)
         self.bn1 = nn.BatchNorm3d(8)
         self.pool1 = nn.MaxPool3d(kernel_size=(1, 2, 2))
@@ -247,7 +277,10 @@ class SimpleConvLSTM2(nn.Module):
         # self.drop = nn.Dropout(0.5)
         self.fc2 = nn.Linear(512, 6)
         # get_summary(self)
-
+        self.params = nn.ParameterDict({
+            'a': nn.Parameter(torch.randn(6)),  # a0 to a5
+            'b': nn.Parameter(torch.randn(6))   # b0 to b5
+        })
     def forward(self, x, hidden_states_input=None, last_out = None):
 
         hidden_states = []
@@ -322,22 +355,41 @@ class SimpleConvLSTM2(nn.Module):
         # Flatten and apply LSTM layer
         x_list=[]
         b, c, seq, h, w = x.size()
-        for t in range(seq): 
-            data = x[:,:,t,:,:]
-            data = data.reshape(b, -1)
-            data = F.relu(self.fc1(data))
-            # data = self.drop(data)
-            data = self.fc2(data)
 
+        data = data.reshape(b, -1)
+        data = F.relu(self.fc1(data))
+        # data = self.drop(data)
+        data = self.fc2(data)
         coordinate_pred = data[:, :2]  # Shape: (batch_size, 2, h, w)
+        unnormalized_coordinates = unnormalize_coordinates(coordinate_pred, 
+                                                            self.davis_sensor_size, 
+                                                            self.width, 
+                                                            self.height)
+        # Extract unnormalized coordinates
+        x = unnormalized_coordinates[:, 0]
+        y = unnormalized_coordinates[:, 1]
+        
+        # Extract polynomial parameters
+        a0, a1, a2, a3, a4, a5 =  self.params['a']
+        b0, b1, b2, b3, b4, b5 = self.params['b']
+        
+        # Apply the polynomial formulas
+        sx = a0 + a1 * x + a2 * y + a3 * x * y + a4 * x**2 + a5 * y**2
+        sy = b0 + b1 * x + b2 * y + b3 * x * y + b4 * x**2 + b5 * y**2
+
+        sx = sx /  self.stimulus_screen_size[1]
+        sy = sy /  self.stimulus_screen_size[0]
+
+        coordinate_pred = torch.stack((sx, sy), dim=1)
 
         # 2. Apply softmax to the last four channels
         state_pred = data[:, 2:]  # Shape: (batch_size, 4, h, w)
         state_pred = F.softmax(state_pred, dim=1)  # Apply softmax on the class dimension
-
+        
         # 3. Concatenate the results back together
-        data = torch.cat((coordinate_pred, state_pred), dim=1)
-        return data, hidden_states
+        pred = torch.cat((coordinate_pred, state_pred), dim=1)
+
+        return pred, hidden_states
 
 
 

@@ -197,6 +197,7 @@ class Trainer(ABC):
             if len(source_buffer) == self.num_bins:
                 # Convert the deque to a tensor and reshape
                 input_tensor = torch.tensor(accumulated_tensor).to(self.gpu_id)
+                input_tensor = input_tensor.unsqueeze(1)
                 if in_output is not None:
                     in_output = in_output.detach()  # Detach in_output to break the computation graph
                 # Detach hidden states to prevent them from affecting new computations

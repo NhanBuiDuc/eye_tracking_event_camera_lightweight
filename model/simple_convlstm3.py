@@ -275,7 +275,8 @@ class SimpleConvLSTM3(nn.Module):
         self.pool4 = nn.MaxPool3d(kernel_size=(1, 2, 2))
         self.fc1 = nn.Linear(1024, 512)
         # self.drop = nn.Dropout(0.5)
-        self.fc2 = nn.Linear(512, 6)
+        self.fc2 = nn.Linear(512, 20)
+        self.fc3 = nn.Linear(20, 6)
         # get_summary(self)
         self.params = nn.ParameterDict({
             'a': nn.Parameter(torch.randn(6)),  # a0 to a5

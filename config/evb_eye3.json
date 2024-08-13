@@ -1,0 +1,38 @@
+{
+    "dataset_params": { 
+        "dataset_name": "eye_data",
+        "get_item_strategy": "static_window",
+        "val_set_idx": [21, 22, 23, 24, 25, 26, 27],
+        "train_set_range": [1, 28],
+        "data_dir": "data/dataset/eye_data",
+        "cache_data_dir": "cache/stream_data",
+        "annotation_dir": "cache/annotation",
+        "num_bins": 5,
+        "input_channel": 2,
+        "davis_sensor_size": [260, 346],
+        "stimulus_screen_size": [1080, 1920],
+        "distance_user_camera": 40,
+        "focal_length": 25,
+        "img_width": 64,
+        "img_height": 64,
+        "fixed_window_dt": 8000, 
+        "tonic_transforms": [],
+        "use_cache": true,
+        "split_ratio": 0.7,
+        "num_sample_each_user": 1000
+    },
+    "training_params": {
+        "arch_name": "LSTM3",
+        "device": "cuda:0",
+        "metrics": ["angular_error"],
+        "losses": ["mean_squared_error"],
+        "lr_model": 1e-6,
+        "num_epochs": 100,
+        "batch_size": 1,
+        "optimizer": "Adam",
+        "scheduler": "StepLR",
+        "out_dir": "output",
+        "load_checkpoint": true
+    }
+  }
+  

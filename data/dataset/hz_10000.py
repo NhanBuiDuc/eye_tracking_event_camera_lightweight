@@ -502,10 +502,10 @@ class DatasetHz10000:
             label[:, :2] = self.target_transform(label[:, :2])
             label = extend_target_with_one_hot(label)
 
-        data = torch.tensor(event)
-        label = torch.tensor(label)
+        # data = torch.tensor(event)
+        # label = torch.tensor(label)
 
-        return data, label
+        return event, label
 
     def merge_results(self, results):
         merged_train_data = []
@@ -762,12 +762,14 @@ class DatasetHz10000:
                     data_temp[1, :, :] < data_temp[0, :, :]
                 ] = 0  # if ch 0 has more evs than 1
 
-            data_temp = data_temp.clip(0, 1)  # no double events
+            # data_temp = data_temp.clip(0, 1)  # no double events
  
             batch_label = np.column_stack((row, col, state_label)).astype(np.int16)
 
-            data_filename = f'{self.cache_data_dir}/{user_id}_{eye}_{file_index}_data.h5'
-            label_filename = f'{self.cache_data_dir}/{user_id}_{eye}_{file_index}_label.h5'
+
+            os.makedirs(f'{self.cache_data_dir}/{user_id}', exist_ok=True)
+            data_filename = f'{self.cache_data_dir}/{user_id}/{user_id}_{eye}_{file_index}_data.h5'
+            label_filename = f'{self.cache_data_dir}/{user_id}/{user_id}_{eye}_{file_index}_label.h5'
             file_index += 1
             with h5py.File(data_filename, 'w') as hf:
                 hf.create_dataset('data', data=data_temp, compression='gzip')
